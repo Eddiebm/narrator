@@ -16,17 +16,18 @@ export interface SlideData extends ParsedSlide {
   error: string | null;
 }
 
-export type Voice = 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
+// ElevenLabs voice IDs
+export type Voice = string;
 
 export type PresentationStyle = 'professional' | 'storytelling' | 'technical' | 'conversational';
 
 export const VOICES: { id: Voice; name: string; description: string }[] = [
-  { id: 'alloy', name: 'Alloy', description: 'Neutral, balanced' },
-  { id: 'echo', name: 'Echo', description: 'Male, conversational' },
-  { id: 'fable', name: 'Fable', description: 'British, expressive' },
-  { id: 'onyx', name: 'Onyx', description: 'Deep, authoritative' },
-  { id: 'nova', name: 'Nova', description: 'Female, warm' },
-  { id: 'shimmer', name: 'Shimmer', description: 'Female, soft' },
+  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel',  description: 'Female, American, warm' },
+  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni',  description: 'Male, American, articulate' },
+  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie',  description: 'Male, Australian, natural' },
+  { id: 'Xb7hH8MSUJpSbSDYk0k2', name: 'Alice',    description: 'Female, British, confident' },
+  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George',   description: 'Male, British, warm' },
+  { id: 'XrExE9yKIg1WjnnlVkGX', name: 'Matilda',  description: 'Female, American, clear' },
 ];
 
 export const STYLES: { id: PresentationStyle; label: string; description: string }[] = [

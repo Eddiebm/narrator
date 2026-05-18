@@ -19,7 +19,7 @@ export default function EditorPage() {
   const [slides, setSlides] = useState<SlideData[]>([]);
   const [presentationName, setPresentationName] = useState('');
   const [style, setStyle] = useState<PresentationStyle>('professional');
-  const [globalVoice, setGlobalVoice] = useState<Voice>('nova');
+  const [globalVoice, setGlobalVoice] = useState<Voice>('21m00Tcm4TlvDq8ikWAM');
   const [globalSpeed, setGlobalSpeed] = useState(1.0);
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
   const [isZipping, setIsZipping] = useState(false);
@@ -38,7 +38,7 @@ export default function EditorPage() {
       session.slides.map((slide, i) => ({
         ...slide,
         script: session.scripts[i] ?? '',
-        voice: 'nova' as Voice,
+        voice: '21m00Tcm4TlvDq8ikWAM' as Voice,
         speed: 1.0,
         audioBlob: null,
         audioUrl: null,
