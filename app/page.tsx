@@ -27,6 +27,8 @@ export default function UploadPage() {
       setError(null);
       setStep('parsing');
 
+      try {
+
       // 1. Parse the PPTX
       const formData = new FormData();
       formData.append('file', file);
@@ -47,7 +49,6 @@ export default function UploadPage() {
       setStep('generating');
       setProgress({ current: 0, total: slides.length });
 
-      // Generate in batches of 5 to show incremental progress
       const batchSize = 5;
       const allScripts: string[] = [];
 
@@ -58,8 +59,14 @@ export default function UploadPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ slides: batch, style }),
         });
+        if (!genRes.ok) {
+          const err = await genRes.text();
+          setError(`Script generation failed: ${err || genRes.status}`);
+          setStep('idle');
+          return;
+        }
         const { scripts } = await genRes.json();
-        allScripts.push(...scripts);
+        allScripts.push(...(scripts ?? []));
         setProgress({ current: Math.min(i + batchSize, slides.length), total: slides.length });
       }
 
@@ -75,6 +82,10 @@ export default function UploadPage() {
 
       setStep('done');
       setTimeout(() => router.push('/editor'), 600);
+      } catch (err) {
+        setError(`Something went wrong: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        setStep('idle');
+      }
     },
     [style, router]
   );

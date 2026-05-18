@@ -38,7 +38,7 @@ async function generateScript(
   if (!content.trim()) return '';
 
   const msg = await client.chat.completions.create({
-    model: 'anthropic/claude-sonnet-4-5',
+    model: 'anthropic/claude-sonnet-4.5',
     max_tokens: 500,
     messages: [
       {
