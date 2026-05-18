@@ -1,28 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
 import { MODELS } from '@/lib/models';
 
 export const maxDuration = 30;
 
 export async function POST(request: NextRequest) {
-  const client = new OpenAI({
-    baseURL: 'https://openrouter.ai/api/v1',
-    apiKey: process.env.OPENROUTER_API_KEY,
-  });
-
   const { script, instruction, slideTitle } = (await request.json()) as {
     script: string;
     instruction: string;
     slideTitle: string;
   };
 
-  const msg = await client.chat.completions.create({
-    model: MODELS.scriptRefinement,
-    max_tokens: 500,
-    messages: [
-      {
-        role: 'user',
-        content: `You are editing a presentation voiceover script. Apply the instruction below to revise the script.
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: MODELS.scriptRefinement,
+      max_tokens: 500,
+      messages: [
+        {
+          role: 'user',
+          content: `You are editing a presentation voiceover script. Apply the instruction below to revise the script.
 
 Slide: "${slideTitle}"
 
@@ -35,10 +35,17 @@ Rules:
 - Keep it natural for spoken delivery
 - Maintain roughly the same length unless the instruction implies a change
 - Return only the revised narration text, nothing else`,
-      },
-    ],
+        },
+      ],
+    }),
   });
 
-  const revised = msg.choices[0].message.content?.trim() ?? '';
+  if (!res.ok) {
+    const body = await res.text();
+    return NextResponse.json({ error: `OpenRouter ${res.status}: ${body}` }, { status: 500 });
+  }
+
+  const data = await res.json();
+  const revised = data.choices[0].message.content?.trim() ?? '';
   return NextResponse.json({ script: revised });
 }

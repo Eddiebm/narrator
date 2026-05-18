@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
 import type { ParsedSlide, PresentationStyle } from '@/lib/types';
 import { MODELS } from '@/lib/models';
 
@@ -16,18 +15,7 @@ const STYLE_PROMPTS: Record<PresentationStyle, string> = {
     'Warm and accessible, like explaining to a smart friend. Uses everyday language and rhetorical questions.',
 };
 
-function openrouter() {
-  return new OpenAI({
-    baseURL: 'https://openrouter.ai/api/v1',
-    apiKey: process.env.OPENROUTER_API_KEY,
-  });
-}
-
-async function generateScript(
-  slide: ParsedSlide,
-  style: PresentationStyle,
-  client: OpenAI
-): Promise<string> {
+async function generateScript(slide: ParsedSlide, style: PresentationStyle): Promise<string> {
   const content = [
     slide.title ? `Title: ${slide.title}` : '',
     slide.body.length ? `Slide content:\n${slide.body.join('\n')}` : '',
@@ -38,13 +26,19 @@ async function generateScript(
 
   if (!content.trim()) return '';
 
-  const msg = await client.chat.completions.create({
-    model: MODELS.scriptGeneration,
-    max_tokens: 500,
-    messages: [
-      {
-        role: 'user',
-        content: `You are a world-class presentation narrator. Write a spoken voiceover for this slide (30–60 seconds when read aloud).
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: MODELS.scriptGeneration,
+      max_tokens: 500,
+      messages: [
+        {
+          role: 'user',
+          content: `You are a world-class presentation narrator. Write a spoken voiceover for this slide (30–60 seconds when read aloud).
 
 Style: ${STYLE_PROMPTS[style]}
 
@@ -58,22 +52,28 @@ Slide content:
 ${content}
 
 Return only the narration text. No labels, no quotes.`,
-      },
-    ],
+        },
+      ],
+    }),
   });
 
-  return msg.choices[0].message.content?.trim() ?? '';
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`OpenRouter ${res.status}: ${body}`);
+  }
+
+  const data = await res.json();
+  return data.choices[0].message.content?.trim() ?? '';
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const client = openrouter();
     const { slides, style = 'professional' } = (await request.json()) as {
       slides: ParsedSlide[];
       style: PresentationStyle;
     };
 
-    const scripts = await Promise.all(slides.map((s) => generateScript(s, style, client)));
+    const scripts = await Promise.all(slides.map((s) => generateScript(s, style)));
 
     return NextResponse.json({ scripts });
   } catch (err) {
