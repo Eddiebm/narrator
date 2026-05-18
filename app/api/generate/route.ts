@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import type { ParsedSlide, PresentationStyle } from '@/lib/types';
+import { MODELS } from '@/lib/models';
 
 export const maxDuration = 120;
 
@@ -38,7 +39,7 @@ async function generateScript(
   if (!content.trim()) return '';
 
   const msg = await client.chat.completions.create({
-    model: 'anthropic/claude-sonnet-4.5',
+    model: MODELS.scriptGeneration,
     max_tokens: 500,
     messages: [
       {
