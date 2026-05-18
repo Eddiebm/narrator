@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import type { ParsedSlide, PresentationStyle } from '@/lib/types';
 
 export const maxDuration = 120;
@@ -15,7 +15,18 @@ const STYLE_PROMPTS: Record<PresentationStyle, string> = {
     'Warm and accessible, like explaining to a smart friend. Uses everyday language and rhetorical questions.',
 };
 
-async function generateScript(slide: ParsedSlide, style: PresentationStyle, client: Anthropic): Promise<string> {
+function openrouter() {
+  return new OpenAI({
+    baseURL: 'https://openrouter.ai/api/v1',
+    apiKey: process.env.OPENROUTER_API_KEY,
+  });
+}
+
+async function generateScript(
+  slide: ParsedSlide,
+  style: PresentationStyle,
+  client: OpenAI
+): Promise<string> {
   const content = [
     slide.title ? `Title: ${slide.title}` : '',
     slide.body.length ? `Slide content:\n${slide.body.join('\n')}` : '',
@@ -26,8 +37,8 @@ async function generateScript(slide: ParsedSlide, style: PresentationStyle, clie
 
   if (!content.trim()) return '';
 
-  const msg = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+  const msg = await client.chat.completions.create({
+    model: 'anthropic/claude-sonnet-4-5',
     max_tokens: 500,
     messages: [
       {
@@ -50,11 +61,11 @@ Return only the narration text. No labels, no quotes.`,
     ],
   });
 
-  return (msg.content[0] as { type: string; text: string }).text.trim();
+  return msg.choices[0].message.content?.trim() ?? '';
 }
 
 export async function POST(request: NextRequest) {
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const client = openrouter();
   const { slides, style = 'professional' } = (await request.json()) as {
     slides: ParsedSlide[];
     style: PresentationStyle;

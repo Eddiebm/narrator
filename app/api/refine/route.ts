@@ -1,18 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 
 export const maxDuration = 30;
 
 export async function POST(request: NextRequest) {
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const client = new OpenAI({
+    baseURL: 'https://openrouter.ai/api/v1',
+    apiKey: process.env.OPENROUTER_API_KEY,
+  });
+
   const { script, instruction, slideTitle } = (await request.json()) as {
     script: string;
     instruction: string;
     slideTitle: string;
   };
 
-  const msg = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+  const msg = await client.chat.completions.create({
+    model: 'anthropic/claude-sonnet-4-5',
     max_tokens: 500,
     messages: [
       {
@@ -34,6 +38,6 @@ Rules:
     ],
   });
 
-  const revised = (msg.content[0] as { type: string; text: string }).text.trim();
+  const revised = msg.choices[0].message.content?.trim() ?? '';
   return NextResponse.json({ script: revised });
 }
