@@ -163,7 +163,7 @@ export default function SlideCard({
           >
             {VOICES.map((v) => (
               <option key={v.id} value={v.id}>
-                {v.name} — {v.description}
+                {v.name} · {v.region} {v.description}
               </option>
             ))}
           </select>

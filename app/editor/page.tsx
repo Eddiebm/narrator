@@ -19,7 +19,7 @@ export default function EditorPage() {
   const [slides, setSlides] = useState<SlideData[]>([]);
   const [presentationName, setPresentationName] = useState('');
   const [style, setStyle] = useState<PresentationStyle>('professional');
-  const [globalVoice, setGlobalVoice] = useState<Voice>('nova');
+  const [globalVoice, setGlobalVoice] = useState<Voice>('en-NG-AbeoNeural');
   const [globalSpeed, setGlobalSpeed] = useState(1.0);
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
   const [isZipping, setIsZipping] = useState(false);
@@ -38,7 +38,7 @@ export default function EditorPage() {
       session.slides.map((slide, i) => ({
         ...slide,
         script: session.scripts[i] ?? '',
-        voice: 'nova' as Voice,
+        voice: 'en-NG-AbeoNeural' as Voice,
         speed: 1.0,
         audioBlob: null,
         audioUrl: null,
@@ -205,7 +205,7 @@ export default function EditorPage() {
               >
                 {VOICES.map((v) => (
                   <option key={v.id} value={v.id}>
-                    {v.name}
+                    {v.name} · {v.region}
                   </option>
                 ))}
               </select>

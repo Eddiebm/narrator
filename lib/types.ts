@@ -16,20 +16,28 @@ export interface SlideData extends ParsedSlide {
   error: string | null;
 }
 
-export type Voice = 'alloy' | 'ash' | 'coral' | 'echo' | 'fable' | 'nova' | 'onyx' | 'sage' | 'shimmer';
+export type Voice = string;
 
 export type PresentationStyle = 'professional' | 'storytelling' | 'technical' | 'conversational';
 
-export const VOICES: { id: Voice; name: string; description: string }[] = [
-  { id: 'nova',    name: 'Nova',    description: 'Female, warm & engaging' },
-  { id: 'coral',   name: 'Coral',   description: 'Female, clear & bright' },
-  { id: 'sage',    name: 'Sage',    description: 'Female, calm & measured' },
-  { id: 'shimmer', name: 'Shimmer', description: 'Female, soft & expressive' },
-  { id: 'onyx',    name: 'Onyx',    description: 'Male, deep & authoritative' },
-  { id: 'echo',    name: 'Echo',    description: 'Male, conversational' },
-  { id: 'fable',   name: 'Fable',   description: 'British, expressive' },
-  { id: 'ash',     name: 'Ash',     description: 'Neutral, direct' },
-  { id: 'alloy',   name: 'Alloy',   description: 'Neutral, balanced' },
+export const VOICES: { id: Voice; name: string; description: string; region: string }[] = [
+  // African English
+  { id: 'en-NG-AbeoNeural',      name: 'Abeo',      description: 'Male',   region: 'Nigerian' },
+  { id: 'en-NG-EzinneNeural',    name: 'Ezinne',    description: 'Female', region: 'Nigerian' },
+  { id: 'en-GH-NanaNeural',      name: 'Nana',      description: 'Female', region: 'Ghanaian' },
+  { id: 'en-KE-AsiliaNeural',    name: 'Asilia',    description: 'Female', region: 'Kenyan' },
+  { id: 'en-KE-ChilembaNeural',  name: 'Chilemba',  description: 'Male',   region: 'Kenyan' },
+  { id: 'en-ZA-LeahNeural',      name: 'Leah',      description: 'Female', region: 'S. African' },
+  { id: 'en-ZA-LukeNeural',      name: 'Luke',      description: 'Male',   region: 'S. African' },
+  // British
+  { id: 'en-GB-SoniaNeural',     name: 'Sonia',     description: 'Female', region: 'British' },
+  { id: 'en-GB-RyanNeural',      name: 'Ryan',      description: 'Male',   region: 'British' },
+  // American
+  { id: 'en-US-JennyNeural',     name: 'Jenny',     description: 'Female', region: 'American' },
+  { id: 'en-US-ChristopherNeural', name: 'Christopher', description: 'Male', region: 'American' },
+  // Australian
+  { id: 'en-AU-NatashaNeural',   name: 'Natasha',   description: 'Female', region: 'Australian' },
+  { id: 'en-AU-WilliamNeural',   name: 'William',   description: 'Male',   region: 'Australian' },
 ];
 
 export const STYLES: { id: PresentationStyle; label: string; description: string }[] = [
