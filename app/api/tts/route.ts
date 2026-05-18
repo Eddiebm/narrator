@@ -18,7 +18,7 @@ function streamToBuffer(readable: NodeJS.ReadableStream): Promise<Buffer> {
 }
 
 export async function POST(request: NextRequest) {
-  const { script, voice = 'en-US-JennyNeural', speed = 1.0 } = (await request.json()) as {
+  const { script, voice = 'en-GB-SoniaNeural', speed = 1.0 } = (await request.json()) as {
     script: string;
     voice: string;
     speed: number;
