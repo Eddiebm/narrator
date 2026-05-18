@@ -16,18 +16,20 @@ export interface SlideData extends ParsedSlide {
   error: string | null;
 }
 
-// ElevenLabs voice IDs
-export type Voice = string;
+export type Voice = 'alloy' | 'ash' | 'coral' | 'echo' | 'fable' | 'nova' | 'onyx' | 'sage' | 'shimmer';
 
 export type PresentationStyle = 'professional' | 'storytelling' | 'technical' | 'conversational';
 
 export const VOICES: { id: Voice; name: string; description: string }[] = [
-  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel',  description: 'Female, American, warm' },
-  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni',  description: 'Male, American, articulate' },
-  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie',  description: 'Male, Australian, natural' },
-  { id: 'Xb7hH8MSUJpSbSDYk0k2', name: 'Alice',    description: 'Female, British, confident' },
-  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George',   description: 'Male, British, warm' },
-  { id: 'XrExE9yKIg1WjnnlVkGX', name: 'Matilda',  description: 'Female, American, clear' },
+  { id: 'nova',    name: 'Nova',    description: 'Female, warm & engaging' },
+  { id: 'coral',   name: 'Coral',   description: 'Female, clear & bright' },
+  { id: 'sage',    name: 'Sage',    description: 'Female, calm & measured' },
+  { id: 'shimmer', name: 'Shimmer', description: 'Female, soft & expressive' },
+  { id: 'onyx',    name: 'Onyx',    description: 'Male, deep & authoritative' },
+  { id: 'echo',    name: 'Echo',    description: 'Male, conversational' },
+  { id: 'fable',   name: 'Fable',   description: 'British, expressive' },
+  { id: 'ash',     name: 'Ash',     description: 'Neutral, direct' },
+  { id: 'alloy',   name: 'Alloy',   description: 'Neutral, balanced' },
 ];
 
 export const STYLES: { id: PresentationStyle; label: string; description: string }[] = [
