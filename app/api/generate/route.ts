@@ -65,13 +65,19 @@ Return only the narration text. No labels, no quotes.`,
 }
 
 export async function POST(request: NextRequest) {
-  const client = openrouter();
-  const { slides, style = 'professional' } = (await request.json()) as {
-    slides: ParsedSlide[];
-    style: PresentationStyle;
-  };
+  try {
+    const client = openrouter();
+    const { slides, style = 'professional' } = (await request.json()) as {
+      slides: ParsedSlide[];
+      style: PresentationStyle;
+    };
 
-  const scripts = await Promise.all(slides.map((s) => generateScript(s, style, client)));
+    const scripts = await Promise.all(slides.map((s) => generateScript(s, style, client)));
 
-  return NextResponse.json({ scripts });
+    return NextResponse.json({ scripts });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('Generate error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

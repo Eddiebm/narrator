@@ -60,8 +60,8 @@ export default function UploadPage() {
           body: JSON.stringify({ slides: batch, style }),
         });
         if (!genRes.ok) {
-          const err = await genRes.text();
-          setError(`Script generation failed: ${err || genRes.status}`);
+          const body = await genRes.json().catch(() => ({}));
+          setError(`Script generation failed: ${body.error || genRes.status}`);
           setStep('idle');
           return;
         }
