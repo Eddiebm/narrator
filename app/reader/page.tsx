@@ -1,0 +1,338 @@
+'use client';
+
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import {
+  BookOpen,
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  Upload,
+  ArrowLeft,
+  ChevronDown,
+  Loader2,
+  Volume2,
+} from 'lucide-react';
+
+const VOICES = [
+  { id: 'nova',    label: 'Nova',    description: 'Female · Warm' },
+  { id: 'shimmer', label: 'Shimmer', description: 'Female · Clear' },
+  { id: 'onyx',    label: 'Onyx',    description: 'Male · Deep' },
+  { id: 'echo',    label: 'Echo',    description: 'Male · Crisp' },
+  { id: 'alloy',   label: 'Alloy',   description: 'Neutral · Balanced' },
+  { id: 'fable',   label: 'Fable',   description: 'Male · Expressive' },
+];
+
+export default function ReaderPage() {
+  const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const paraRefs = useRef<(HTMLParagraphElement | null)[]>([]);
+  const audioUrlsRef = useRef<string[]>([]);
+
+  const [paragraphs, setParagraphs] = useState<string[]>([]);
+  const [fileName, setFileName] = useState('');
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [voice, setVoice] = useState('nova');
+  const [speed, setSpeed] = useState(1.0);
+  const [error, setError] = useState<string | null>(null);
+  // Cache generated audio blobs by paragraph index
+  const audioCacheRef = useRef<Map<number, string>>(new Map());
+
+  // Cleanup object URLs on unmount
+  useEffect(() => {
+    return () => {
+      audioUrlsRef.current.forEach(URL.revokeObjectURL);
+    };
+  }, []);
+
+  // Scroll active paragraph into view
+  useEffect(() => {
+    paraRefs.current[currentIdx]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [currentIdx]);
+
+  // Keyboard: space = play/pause, arrow keys = skip
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+      if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+      if (e.code === 'ArrowRight') { e.preventDefault(); skipForward(); }
+      if (e.code === 'ArrowLeft') { e.preventDefault(); skipBack(); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  });
+
+  const fetchAudio = useCallback(async (idx: number): Promise<string | null> => {
+    if (audioCacheRef.current.has(idx)) return audioCacheRef.current.get(idx)!;
+    const para = paragraphs[idx];
+    if (!para) return null;
+    try {
+      const res = await fetch('/api/reader-tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: para, voice, speed }),
+      });
+      if (!res.ok) throw new Error('TTS failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      audioUrlsRef.current.push(url);
+      audioCacheRef.current.set(idx, url);
+      return url;
+    } catch {
+      return null;
+    }
+  }, [paragraphs, voice, speed]);
+
+  const playFrom = useCallback(async (idx: number) => {
+    if (idx >= paragraphs.length) { setIsPlaying(false); return; }
+    setCurrentIdx(idx);
+    setIsLoading(true);
+    const url = await fetchAudio(idx);
+    setIsLoading(false);
+    if (!url) { setError('Audio failed for this paragraph.'); setIsPlaying(false); return; }
+
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = url;
+      audioRef.current.playbackRate = 1; // speed already baked into TTS
+      audioRef.current.onended = () => playFrom(idx + 1);
+      audioRef.current.play();
+      setIsPlaying(true);
+      // Prefetch next paragraph
+      if (idx + 1 < paragraphs.length) fetchAudio(idx + 1);
+    }
+  }, [paragraphs, fetchAudio]);
+
+  const togglePlay = useCallback(() => {
+    if (!paragraphs.length) return;
+    if (isPlaying) {
+      audioRef.current?.pause();
+      setIsPlaying(false);
+    } else {
+      if (audioRef.current?.src && audioRef.current.paused) {
+        audioRef.current.play();
+        setIsPlaying(true);
+      } else {
+        playFrom(currentIdx);
+      }
+    }
+  }, [isPlaying, paragraphs, currentIdx, playFrom]);
+
+  const skipForward = useCallback(() => {
+    audioRef.current?.pause();
+    setIsPlaying(false);
+    const next = Math.min(currentIdx + 1, paragraphs.length - 1);
+    setCurrentIdx(next);
+    audioCacheRef.current.delete(next); // force re-fetch at new position
+  }, [currentIdx, paragraphs.length]);
+
+  const skipBack = useCallback(() => {
+    audioRef.current?.pause();
+    setIsPlaying(false);
+    const prev = Math.max(currentIdx - 1, 0);
+    setCurrentIdx(prev);
+  }, [currentIdx]);
+
+  const handleFile = useCallback(async (file: File) => {
+    setError(null);
+    setIsExtracting(true);
+    setParagraphs([]);
+    audioCacheRef.current.clear();
+    setCurrentIdx(0);
+    setIsPlaying(false);
+    audioRef.current?.pause();
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch('/api/extract-doc', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || 'Failed to extract text.'); return; }
+      setParagraphs(data.paragraphs);
+      setFileName(file.name);
+    } catch {
+      setError('Failed to read the file. Try again.');
+    } finally {
+      setIsExtracting(false);
+    }
+  }, []);
+
+  const hasDocs = paragraphs.length > 0;
+  const progress = hasDocs ? Math.round(((currentIdx + 1) / paragraphs.length) * 100) : 0;
+
+  return (
+    <div className="min-h-screen flex flex-col">
+      <audio ref={audioRef} />
+
+      {/* Header */}
+      <header className="sticky top-0 z-10 bg-surface/90 backdrop-blur border-b border-surface-border">
+        <div className="max-w-3xl mx-auto px-4 h-14 flex items-center gap-4">
+          <button onClick={() => router.push('/')} className="text-ink-muted hover:text-ink transition-colors">
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div className="flex items-center gap-1.5 mr-auto">
+            <BookOpen className="w-4 h-4 text-accent-light" />
+            <span className="font-medium text-sm truncate max-w-[200px]">
+              {fileName || 'Document Reader'}
+            </span>
+            {hasDocs && (
+              <span className="text-ink-muted text-xs ml-1">{paragraphs.length} paragraphs</span>
+            )}
+          </div>
+
+          {/* Voice selector */}
+          {hasDocs && (
+            <>
+              <div className="relative">
+                <select
+                  value={voice}
+                  onChange={(e) => { setVoice(e.target.value); audioCacheRef.current.clear(); }}
+                  className="appearance-none bg-surface-card border border-surface-border text-sm text-ink rounded-lg pl-3 pr-7 py-1.5 focus:outline-none focus:border-accent cursor-pointer"
+                >
+                  {VOICES.map((v) => (
+                    <option key={v.id} value={v.id}>{v.label} · {v.description}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-ink-muted pointer-events-none" />
+              </div>
+
+              <div className="relative hidden sm:block">
+                <select
+                  value={speed}
+                  onChange={(e) => { setSpeed(parseFloat(e.target.value)); audioCacheRef.current.clear(); }}
+                  className="appearance-none bg-surface-card border border-surface-border text-sm text-ink rounded-lg pl-3 pr-7 py-1.5 focus:outline-none focus:border-accent cursor-pointer"
+                >
+                  {[0.75, 0.9, 1.0, 1.1, 1.25].map((s) => (
+                    <option key={s} value={s}>{s}×</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-ink-muted pointer-events-none" />
+              </div>
+            </>
+          )}
+
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-card border border-surface-border hover:border-accent text-sm rounded-lg font-medium transition-all"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">{hasDocs ? 'New file' : 'Upload'}</span>
+          </button>
+          <input ref={fileInputRef} type="file" accept=".pdf,.docx" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }} />
+        </div>
+
+        {/* Progress bar */}
+        {hasDocs && (
+          <div className="h-0.5 bg-surface-border">
+            <div className="h-full bg-accent transition-all duration-300" style={{ width: `${progress}%` }} />
+          </div>
+        )}
+      </header>
+
+      {/* Main content */}
+      <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-8 pb-32">
+        {!hasDocs && !isExtracting && (
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full border-2 border-dashed border-surface-border rounded-2xl p-20 flex flex-col items-center gap-4 cursor-pointer hover:border-accent/50 hover:bg-surface-hover transition-all"
+          >
+            <div className="w-16 h-16 rounded-xl bg-surface-card border border-surface-border flex items-center justify-center">
+              <BookOpen className="w-8 h-8 text-ink-muted" />
+            </div>
+            <div className="text-center">
+              <p className="font-medium text-ink mb-1">Upload a document to read</p>
+              <p className="text-sm text-ink-muted">PDF or DOCX — Courtney's reader</p>
+            </div>
+          </div>
+        )}
+
+        {isExtracting && (
+          <div className="flex flex-col items-center gap-4 pt-20">
+            <Loader2 className="w-8 h-8 text-accent-light animate-spin" />
+            <p className="text-ink-muted text-sm">Reading document…</p>
+          </div>
+        )}
+
+        {error && (
+          <p className="mb-6 text-sm text-red-400 bg-red-950/40 border border-red-900 rounded-lg px-4 py-2">
+            {error}
+          </p>
+        )}
+
+        {/* Paragraphs */}
+        {hasDocs && (
+          <div className="flex flex-col gap-3">
+            {paragraphs.map((para, i) => (
+              <p
+                key={i}
+                ref={(el) => { paraRefs.current[i] = el; }}
+                onClick={() => { audioRef.current?.pause(); setIsPlaying(false); setCurrentIdx(i); }}
+                className={`text-lg leading-relaxed rounded-xl px-5 py-4 cursor-pointer transition-all ${
+                  i === currentIdx
+                    ? 'bg-accent/15 border border-accent/40 text-ink'
+                    : 'text-ink-muted hover:text-ink hover:bg-surface-hover'
+                }`}
+              >
+                {para}
+              </p>
+            ))}
+          </div>
+        )}
+      </main>
+
+      {/* Playback controls — fixed bottom bar */}
+      {hasDocs && (
+        <div className="fixed bottom-0 left-0 right-0 bg-surface/95 backdrop-blur border-t border-surface-border">
+          <div className="max-w-3xl mx-auto px-4 py-4 flex items-center gap-4">
+            <span className="text-xs text-ink-muted w-20 text-right hidden sm:block">
+              {currentIdx + 1} / {paragraphs.length}
+            </span>
+
+            <div className="flex items-center gap-3 mx-auto">
+              <button
+                onClick={skipBack}
+                disabled={currentIdx === 0}
+                className="w-10 h-10 rounded-full bg-surface-card border border-surface-border hover:border-accent disabled:opacity-30 flex items-center justify-center transition-all"
+              >
+                <SkipBack className="w-4 h-4" />
+              </button>
+
+              <button
+                onClick={togglePlay}
+                disabled={isLoading}
+                className="w-14 h-14 rounded-full bg-accent hover:bg-accent/90 disabled:opacity-50 flex items-center justify-center transition-all shadow-lg"
+              >
+                {isLoading ? (
+                  <Loader2 className="w-6 h-6 text-white animate-spin" />
+                ) : isPlaying ? (
+                  <Pause className="w-6 h-6 text-white" />
+                ) : (
+                  <Play className="w-6 h-6 text-white ml-0.5" />
+                )}
+              </button>
+
+              <button
+                onClick={skipForward}
+                disabled={currentIdx >= paragraphs.length - 1}
+                className="w-10 h-10 rounded-full bg-surface-card border border-surface-border hover:border-accent disabled:opacity-30 flex items-center justify-center transition-all"
+              >
+                <SkipForward className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="w-20 hidden sm:flex items-center gap-1 text-xs text-ink-muted">
+              <Volume2 className="w-3 h-3" />
+              <span>Space to play</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

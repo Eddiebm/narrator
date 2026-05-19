@@ -2,7 +2,8 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Mic2, Upload, FileText, Sparkles, CheckCircle2, Loader2 } from 'lucide-react';
+import Link from 'next/link';
+import { Mic2, Upload, FileText, Sparkles, CheckCircle2, Loader2, BookOpen } from 'lucide-react';
 import type { ParsedSlide, PresentationStyle, NarratorSession } from '@/lib/types';
 import { STYLES } from '@/lib/types';
 import { savePptx } from '@/lib/idb';
@@ -116,12 +117,19 @@ export default function UploadPage() {
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-4 py-16">
-      {/* Logo */}
+      {/* Logo + reader link */}
       <div className="flex items-center gap-2 mb-12">
         <div className="w-9 h-9 rounded-lg bg-accent flex items-center justify-center">
           <Mic2 className="w-5 h-5 text-white" />
         </div>
         <span className="text-xl font-semibold tracking-tight">Narrator</span>
+        <Link
+          href="/reader"
+          className="ml-4 flex items-center gap-1.5 px-3 py-1.5 bg-surface-card border border-surface-border hover:border-accent text-sm text-ink-muted hover:text-ink rounded-lg transition-all"
+        >
+          <BookOpen className="w-3.5 h-3.5" />
+          Reader
+        </Link>
       </div>
 
       {/* Headline */}
