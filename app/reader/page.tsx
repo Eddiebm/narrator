@@ -154,14 +154,26 @@ export default function ReaderPage() {
     setCurrentIdx(prev);
   }, [currentIdx]);
 
-  const handleFile = useCallback(async (file: File) => {
+  const resetAudio = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.onended = null; // kill stale closure so old content can't resurface
+      audioRef.current.src = '';
+    }
+    audioCacheRef.current.clear();
+    audioUrlsRef.current.forEach(URL.revokeObjectURL);
+    audioUrlsRef.current = [];
+    setCurrentIdx(0);
+    currentIdxRef.current = 0;
+    setIsPlaying(false);
+    isPlayingRef.current = false;
     setError(null);
+  }, []);
+
+  const handleFile = useCallback(async (file: File) => {
+    resetAudio();
     setIsExtracting(true);
     setParagraphs([]);
-    audioCacheRef.current.clear();
-    setCurrentIdx(0);
-    setIsPlaying(false);
-    audioRef.current?.pause();
 
     const formData = new FormData();
     formData.append('file', file);
@@ -188,10 +200,7 @@ export default function ReaderPage() {
       .filter((p) => p.length > 10);
     // If no double-line-breaks, split by single newlines
     const result = paras.length > 1 ? paras : text.split(/\n/).map((p) => p.trim()).filter((p) => p.length > 10);
-    audioCacheRef.current.clear();
-    setCurrentIdx(0);
-    setIsPlaying(false);
-    audioRef.current?.pause();
+    resetAudio();
     setParagraphs(result.length ? result : [text]);
     setFileName('Pasted text');
     setPasteText('');
@@ -361,7 +370,7 @@ export default function ReaderPage() {
           )}
 
           <button
-            onClick={() => { setParagraphs([]); setShowPaste(true); audioRef.current?.pause(); setIsPlaying(false); }}
+            onClick={() => { resetAudio(); setParagraphs([]); setShowPaste(true); }}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-card border border-surface-border hover:border-accent text-sm rounded-lg font-medium transition-all"
           >
             <ClipboardPaste className="w-3.5 h-3.5" />
