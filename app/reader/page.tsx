@@ -13,6 +13,7 @@ import {
   ChevronDown,
   Loader2,
   Volume2,
+  ClipboardPaste,
 } from 'lucide-react';
 
 const VOICES = [
@@ -33,6 +34,8 @@ export default function ReaderPage() {
 
   const [paragraphs, setParagraphs] = useState<string[]>([]);
   const [fileName, setFileName] = useState('');
+  const [pasteText, setPasteText] = useState('');
+  const [showPaste, setShowPaste] = useState(false);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -163,6 +166,25 @@ export default function ReaderPage() {
     }
   }, []);
 
+  const handlePastedText = useCallback(() => {
+    const text = pasteText.trim();
+    if (!text) return;
+    const paras = text
+      .split(/\n{2,}|\r\n{2,}/)
+      .map((p) => p.replace(/\s+/g, ' ').trim())
+      .filter((p) => p.length > 10);
+    // If no double-line-breaks, split by single newlines
+    const result = paras.length > 1 ? paras : text.split(/\n/).map((p) => p.trim()).filter((p) => p.length > 10);
+    audioCacheRef.current.clear();
+    setCurrentIdx(0);
+    setIsPlaying(false);
+    audioRef.current?.pause();
+    setParagraphs(result.length ? result : [text]);
+    setFileName('Pasted text');
+    setPasteText('');
+    setShowPaste(false);
+  }, [pasteText]);
+
   const hasDocs = paragraphs.length > 0;
   const progress = hasDocs ? Math.round(((currentIdx + 1) / paragraphs.length) * 100) : 0;
 
@@ -218,6 +240,14 @@ export default function ReaderPage() {
           )}
 
           <button
+            onClick={() => { setParagraphs([]); setShowPaste(true); audioRef.current?.pause(); setIsPlaying(false); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-card border border-surface-border hover:border-accent text-sm rounded-lg font-medium transition-all"
+          >
+            <ClipboardPaste className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Paste</span>
+          </button>
+
+          <button
             onClick={() => fileInputRef.current?.click()}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-card border border-surface-border hover:border-accent text-sm rounded-lg font-medium transition-all"
           >
@@ -237,17 +267,67 @@ export default function ReaderPage() {
 
       {/* Main content */}
       <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-8 pb-32">
-        {!hasDocs && !isExtracting && (
-          <div
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full border-2 border-dashed border-surface-border rounded-2xl p-20 flex flex-col items-center gap-4 cursor-pointer hover:border-accent/50 hover:bg-surface-hover transition-all"
-          >
-            <div className="w-16 h-16 rounded-xl bg-surface-card border border-surface-border flex items-center justify-center">
-              <BookOpen className="w-8 h-8 text-ink-muted" />
+        {!hasDocs && !isExtracting && !showPaste && (
+          <div className="flex flex-col gap-4">
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full border-2 border-dashed border-surface-border rounded-2xl p-14 flex flex-col items-center gap-4 cursor-pointer hover:border-accent/50 hover:bg-surface-hover transition-all"
+            >
+              <div className="w-14 h-14 rounded-xl bg-surface-card border border-surface-border flex items-center justify-center">
+                <Upload className="w-7 h-7 text-ink-muted" />
+              </div>
+              <div className="text-center">
+                <p className="font-medium text-ink mb-1">Upload a document</p>
+                <p className="text-sm text-ink-muted">PDF or DOCX</p>
+              </div>
             </div>
-            <div className="text-center">
-              <p className="font-medium text-ink mb-1">Upload a document to read</p>
-              <p className="text-sm text-ink-muted">PDF or DOCX — Courtney's reader</p>
+
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-surface-border" />
+              <span className="text-xs text-ink-dim">or</span>
+              <div className="flex-1 h-px bg-surface-border" />
+            </div>
+
+            <button
+              onClick={() => setShowPaste(true)}
+              className="w-full border-2 border-dashed border-surface-border rounded-2xl p-10 flex flex-col items-center gap-3 cursor-pointer hover:border-accent/50 hover:bg-surface-hover transition-all"
+            >
+              <div className="w-14 h-14 rounded-xl bg-surface-card border border-surface-border flex items-center justify-center">
+                <ClipboardPaste className="w-7 h-7 text-ink-muted" />
+              </div>
+              <div className="text-center">
+                <p className="font-medium text-ink mb-1">Paste text</p>
+                <p className="text-sm text-ink-muted">Email, article, anything</p>
+              </div>
+            </button>
+          </div>
+        )}
+
+        {!hasDocs && !isExtracting && showPaste && (
+          <div className="flex flex-col gap-4">
+            <textarea
+              autoFocus
+              value={pasteText}
+              onChange={(e) => setPasteText(e.target.value)}
+              placeholder="Paste or type anything here — email, article, report, contract…"
+              rows={14}
+              className="w-full bg-surface-card border border-surface-border rounded-2xl px-5 py-4 text-lg text-ink leading-relaxed focus:outline-none focus:border-accent resize-none placeholder-ink-dim"
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowPaste(false); setPasteText(''); }}
+                className="px-4 py-2 text-sm text-ink-muted border border-surface-border rounded-lg hover:border-accent transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handlePastedText}
+                disabled={!pasteText.trim()}
+                className="flex-1 px-4 py-2 bg-accent hover:bg-accent/90 disabled:opacity-40 text-white text-sm rounded-lg font-medium transition-all flex items-center justify-center gap-2"
+              >
+                <BookOpen className="w-4 h-4" />
+                Read this
+              </button>
             </div>
           </div>
         )}
