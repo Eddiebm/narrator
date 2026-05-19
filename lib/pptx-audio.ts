@@ -60,16 +60,20 @@ export async function embedAudioInPptx(
   return { blob, embedded, total: slideFiles.length };
 }
 
-// Matches what PowerPoint itself produces when you insert audio + set Start: Automatically
+// PowerPoint requires p:pic (not p:sp) for media objects — p:sp is ignored as audio
 function audioShapeXml(shapeId: number, rId: string, rIdMedia: string, n: number): string {
-  return `<p:sp>
-      <p:nvSpPr>
+  return `<p:pic>
+      <p:nvPicPr>
         <p:cNvPr id="${shapeId}" name="NarratorAudio${n}">
           <a:hlinkClick r:id="${rIdMedia}" action="ppaction://media"/>
         </p:cNvPr>
-        <p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr>
+        <p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr>
         <p:nvPr><p:audioFile r:link="${rId}"/></p:nvPr>
-      </p:nvSpPr>
+      </p:nvPicPr>
+      <p:blipFill>
+        <a:blip/>
+        <a:stretch><a:fillRect/></a:stretch>
+      </p:blipFill>
       <p:spPr>
         <a:xfrm>
           <a:off x="8686800" y="6248400"/>
@@ -77,8 +81,7 @@ function audioShapeXml(shapeId: number, rId: string, rIdMedia: string, n: number
         </a:xfrm>
         <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
       </p:spPr>
-      <p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody>
-    </p:sp>`;
+    </p:pic>`;
 }
 
 // Audio par with delay="0" — plays the moment the slide is displayed (not on click)
