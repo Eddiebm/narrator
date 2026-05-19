@@ -175,13 +175,23 @@ export default function EditorPage() {
     setIsExporting(true);
     try {
       const { embedAudioInPptx } = await import('@/lib/pptx-audio');
-      const result = await embedAudioInPptx(pptxBuffer, slides.map((s) => s.audioBlob));
-      const url = URL.createObjectURL(result);
+      const { blob, embedded, total } = await embedAudioInPptx(
+        pptxBuffer,
+        slides.map((s) => s.audioBlob)
+      );
+      if (embedded === 0) {
+        alert(`No audio was embedded (found ${total} slides). Generate audio first, then export.`);
+        return;
+      }
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `${presentationName}-narrated.pptx`;
       a.click();
       URL.revokeObjectURL(url);
+      if (embedded < total) {
+        alert(`Downloaded with ${embedded}/${total} slides narrated. Generate audio for the remaining slides and export again.`);
+      }
     } finally {
       setIsExporting(false);
     }

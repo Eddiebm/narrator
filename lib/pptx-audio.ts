@@ -3,14 +3,17 @@ import JSZip from 'jszip';
 export async function embedAudioInPptx(
   pptxBuffer: ArrayBuffer,
   audioBlobs: (Blob | null)[]
-): Promise<Blob> {
+): Promise<{ blob: Blob; embedded: number; total: number }> {
   const zip = await JSZip.loadAsync(pptxBuffer);
   const slideFiles = await getOrderedSlideFiles(zip);
   await ensureMp3ContentType(zip);
 
+  let embedded = 0;
+
   for (let i = 0; i < slideFiles.length; i++) {
     const blob = audioBlobs[i];
     if (!blob) continue;
+    embedded++;
 
     const slideFile = slideFiles[i];
     const n = i + 1;
@@ -50,10 +53,11 @@ export async function embedAudioInPptx(
     zip.file(slideFile, slideXml);
   }
 
-  return zip.generateAsync({
+  const blob = await zip.generateAsync({
     type: 'blob',
     mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   });
+  return { blob, embedded, total: slideFiles.length };
 }
 
 // Matches what PowerPoint itself produces when you insert audio + set Start: Automatically
@@ -146,17 +150,23 @@ async function getOrderedSlideFiles(zip: JSZip): Promise<string[]> {
   const presRels = (await zip.file('ppt/_rels/presentation.xml.rels')?.async('text')) ?? '';
   const presXml = (await zip.file('ppt/presentation.xml')?.async('text')) ?? '';
 
+  // Extract Id→Target from each <Relationship> element — attribute order varies per authoring tool
   const rIdToTarget = new Map<string, string>();
-  for (const m of presRels.matchAll(/Id="([^"]+)"[^>]+Target="([^"]+)"/g)) {
-    rIdToTarget.set(m[1], m[2]);
+  for (const m of presRels.matchAll(/<Relationship[^>]+>/g)) {
+    const el = m[0];
+    const id = el.match(/\bId="([^"]+)"/)?.[1];
+    const target = el.match(/\bTarget="([^"]+)"/)?.[1];
+    if (id && target) rIdToTarget.set(id, target);
   }
 
-  return [...presXml.matchAll(/p:sldId[^>]+r:id="([^"]+)"/g)]
-    .map((m) => {
-      const t = rIdToTarget.get(m[1]);
-      return t ? `ppt/${t}` : null;
-    })
-    .filter(Boolean) as string[];
+  // Extract r:id from each <p:sldId> element — attribute order varies too
+  const slideFiles: string[] = [];
+  for (const m of presXml.matchAll(/<p:sldId[^/]+\/>/g)) {
+    const rid = m[0].match(/r:id="([^"]+)"/)?.[1];
+    const target = rid && rIdToTarget.get(rid);
+    if (target) slideFiles.push(`ppt/${target}`);
+  }
+  return slideFiles;
 }
 
 async function ensureMp3ContentType(zip: JSZip): Promise<void> {
