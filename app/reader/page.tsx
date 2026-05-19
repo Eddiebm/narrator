@@ -14,6 +14,8 @@ import {
   Loader2,
   Volume2,
   ClipboardPaste,
+  Mic,
+  MicOff,
 } from 'lucide-react';
 
 const VOICES = [
@@ -43,13 +45,24 @@ export default function ReaderPage() {
   const [voice, setVoice] = useState('nova');
   const [speed, setSpeed] = useState(1.0);
   const [error, setError] = useState<string | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  const [lastCommand, setLastCommand] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
+  const isPlayingRef = useRef(false);
+  const currentIdxRef = useRef(0);
   // Cache generated audio blobs by paragraph index
   const audioCacheRef = useRef<Map<number, string>>(new Map());
+
+  // Keep refs in sync so speech handler can read current values without stale closures
+  useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
+  useEffect(() => { currentIdxRef.current = currentIdx; }, [currentIdx]);
 
   // Cleanup object URLs on unmount
   useEffect(() => {
     return () => {
       audioUrlsRef.current.forEach(URL.revokeObjectURL);
+      recognitionRef.current?.stop();
     };
   }, []);
 
@@ -184,6 +197,87 @@ export default function ReaderPage() {
     setPasteText('');
     setShowPaste(false);
   }, [pasteText]);
+
+  const showCommand = useCallback((label: string) => {
+    setLastCommand(label);
+    setTimeout(() => setLastCommand(null), 2000);
+  }, []);
+
+  const toggleListening = useCallback(() => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+    const SR = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+
+    if (!SR) {
+      setError('Voice commands not supported in this browser. Use Chrome or Edge.');
+      return;
+    }
+
+    const rec = new SR();
+    rec.continuous = true;
+    rec.interimResults = false;
+    rec.lang = 'en-US';
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rec.onresult = (e: any) => {
+      const t = e.results[e.results.length - 1][0].transcript.toLowerCase().trim();
+
+      if (/\b(stop|pause|hold on|wait)\b/.test(t)) {
+        showCommand('⏸ Pause');
+        audioRef.current?.pause();
+        setIsPlaying(false);
+      } else if (/\b(play|continue|resume|go|start|read)\b/.test(t)) {
+        showCommand('▶ Play');
+        if (audioRef.current?.paused) { audioRef.current.play(); setIsPlaying(true); }
+        else playFrom(currentIdxRef.current);
+      } else if (/\b(back|previous|last one|go back|before)\b/.test(t)) {
+        showCommand('⏮ Back');
+        audioRef.current?.pause(); setIsPlaying(false);
+        const prev = Math.max(currentIdxRef.current - 1, 0);
+        setCurrentIdx(prev); currentIdxRef.current = prev;
+        setTimeout(() => playFrom(prev), 100);
+      } else if (/\b(next|skip|forward|move on)\b/.test(t)) {
+        showCommand('⏭ Next');
+        audioRef.current?.pause(); setIsPlaying(false);
+        const next = Math.min(currentIdxRef.current + 1, paragraphs.length - 1);
+        setCurrentIdx(next); currentIdxRef.current = next;
+        setTimeout(() => playFrom(next), 100);
+      } else if (/\b(repeat|again|say that again|once more|replay)\b/.test(t)) {
+        showCommand('🔁 Repeat');
+        audioRef.current?.pause();
+        audioCacheRef.current.delete(currentIdxRef.current);
+        setTimeout(() => playFrom(currentIdxRef.current), 100);
+      } else if (/\b(restart|beginning|start over|from the top)\b/.test(t)) {
+        showCommand('⏺ Restart');
+        audioRef.current?.pause(); setIsPlaying(false);
+        setCurrentIdx(0); currentIdxRef.current = 0;
+        setTimeout(() => playFrom(0), 100);
+      }
+    };
+
+    rec.onend = () => {
+      // Auto-restart so it stays on
+      if (isListening) rec.start();
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rec.onerror = (e: any) => {
+      if (e.error !== 'no-speech' && e.error !== 'aborted') {
+        setError(`Mic error: ${e.error}`);
+        setIsListening(false);
+      }
+    };
+
+    recognitionRef.current = rec;
+    rec.start();
+    setIsListening(true);
+  }, [isListening, paragraphs.length, playFrom, showCommand]);
 
   const hasDocs = paragraphs.length > 0;
   const progress = hasDocs ? Math.round(((currentIdx + 1) / paragraphs.length) * 100) : 0;
@@ -369,6 +463,13 @@ export default function ReaderPage() {
       {/* Playback controls — fixed bottom bar */}
       {hasDocs && (
         <div className="fixed bottom-0 left-0 right-0 bg-surface/95 backdrop-blur border-t border-surface-border">
+          {/* Command toast */}
+          {lastCommand && (
+            <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-surface-card border border-accent/40 text-accent-light text-sm font-medium px-4 py-1.5 rounded-full shadow-lg animate-pulse">
+              {lastCommand}
+            </div>
+          )}
+
           <div className="max-w-3xl mx-auto px-4 py-4 flex items-center gap-4">
             <span className="text-xs text-ink-muted w-20 text-right hidden sm:block">
               {currentIdx + 1} / {paragraphs.length}
@@ -403,6 +504,18 @@ export default function ReaderPage() {
                 className="w-10 h-10 rounded-full bg-surface-card border border-surface-border hover:border-accent disabled:opacity-30 flex items-center justify-center transition-all"
               >
                 <SkipForward className="w-4 h-4" />
+              </button>
+
+              <button
+                onClick={toggleListening}
+                title={isListening ? 'Stop voice commands' : 'Start voice commands'}
+                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all border ${
+                  isListening
+                    ? 'bg-red-500/20 border-red-500/60 text-red-400 animate-pulse'
+                    : 'bg-surface-card border-surface-border hover:border-accent'
+                }`}
+              >
+                {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
               </button>
             </div>
 
