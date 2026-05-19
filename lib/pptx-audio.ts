@@ -43,8 +43,9 @@ export async function embedAudioInPptx(
     );
     zip.file(relsPath, relsXml);
 
-    // Modify slide XML
+    // Modify slide XML — strip any previous NarratorAudio elements first (idempotent)
     let slideXml = await zip.file(slideFile)!.async('text');
+    slideXml = stripNarratorAudio(slideXml);
     slideXml = slideXml.replace(
       '</p:spTree>',
       audioShapeXml(shapeId, rId, rIdMedia, n) + '\n</p:spTree>'
@@ -147,6 +148,13 @@ function injectTiming(slideXml: string, shapeId: number, base: number): string {
   if (insertAt === -1) return slideXml;
   const pos = insertAt + tag.length;
   return slideXml.slice(0, pos) + '\n' + ap + slideXml.slice(pos);
+}
+
+function stripNarratorAudio(xml: string): string {
+  // Remove any existing NarratorAudio p:pic or p:sp elements left by a prior export
+  xml = xml.replace(/<p:pic>[\s\S]*?<p:cNvPr[^>]+name="NarratorAudio\d+"[\s\S]*?<\/p:pic>/g, '');
+  xml = xml.replace(/<p:sp>[\s\S]*?<p:cNvPr[^>]+name="NarratorAudio\d+"[\s\S]*?<\/p:sp>/g, '');
+  return xml;
 }
 
 async function getOrderedSlideFiles(zip: JSZip): Promise<string[]> {
