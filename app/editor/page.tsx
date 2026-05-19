@@ -43,7 +43,7 @@ export default function EditorPage() {
       session.slides.map((slide, i) => ({
         ...slide,
         script: session.scripts[i] ?? '',
-        voice: 'en-US-JennyNeural' as Voice,
+        voice: null,
         speed: 1.0,
         audioBlob: null,
         audioUrl: null,

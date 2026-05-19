@@ -7,7 +7,7 @@ export interface ParsedSlide {
 
 export interface SlideData extends ParsedSlide {
   script: string;
-  voice: Voice;
+  voice: Voice | null;
   speed: number;
   audioBlob: Blob | null;
   audioUrl: string | null;
