@@ -203,21 +203,14 @@ export default function ReaderPage() {
     setTimeout(() => setLastCommand(null), 2000);
   }, []);
 
-  const toggleListening = useCallback(() => {
-    if (isListening) {
-      recognitionRef.current?.stop();
-      setIsListening(false);
-      return;
-    }
+  // Separate ref so the onend handler can check without stale closure
+  const wantListeningRef = useRef(false);
 
+  const startListening = useCallback(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any;
     const SR = w.SpeechRecognition ?? w.webkitSpeechRecognition;
-
-    if (!SR) {
-      setError('Voice commands not supported in this browser. Use Chrome or Edge.');
-      return;
-    }
+    if (!SR) return false;
 
     const rec = new SR();
     rec.continuous = true;
@@ -228,11 +221,19 @@ export default function ReaderPage() {
     rec.onresult = (e: any) => {
       const t = e.results[e.results.length - 1][0].transcript.toLowerCase().trim();
 
-      if (/\b(stop|pause|hold on|wait)\b/.test(t)) {
+      if (/\b(stop listening|quiet|silence|go quiet|mute)\b/.test(t)) {
+        showCommand('🔇 Stopped listening');
+        wantListeningRef.current = false;
+        recognitionRef.current?.stop();
+        setIsListening(false);
+      } else if (/\b(start listening|wake up|hey reader|listen|unmute)\b/.test(t)) {
+        // already listening — just confirm
+        showCommand('👂 Listening');
+      } else if (/\b(stop|pause|hold on|wait)\b/.test(t)) {
         showCommand('⏸ Pause');
         audioRef.current?.pause();
         setIsPlaying(false);
-      } else if (/\b(play|continue|resume|go|start|read)\b/.test(t)) {
+      } else if (/\b(play|continue|resume|go|read)\b/.test(t)) {
         showCommand('▶ Play');
         if (audioRef.current?.paused) { audioRef.current.play(); setIsPlaying(true); }
         else playFrom(currentIdxRef.current);
@@ -262,22 +263,48 @@ export default function ReaderPage() {
     };
 
     rec.onend = () => {
-      // Auto-restart so it stays on
-      if (isListening) rec.start();
+      if (wantListeningRef.current) rec.start(); // auto-restart
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rec.onerror = (e: any) => {
       if (e.error !== 'no-speech' && e.error !== 'aborted') {
         setError(`Mic error: ${e.error}`);
+        wantListeningRef.current = false;
         setIsListening(false);
       }
     };
 
     recognitionRef.current = rec;
+    wantListeningRef.current = true;
     rec.start();
     setIsListening(true);
-  }, [isListening, paragraphs.length, playFrom, showCommand]);
+    return true;
+  }, [paragraphs.length, playFrom, showCommand]);
+
+  const toggleListening = useCallback(() => {
+    if (isListening) {
+      wantListeningRef.current = false;
+      recognitionRef.current?.stop();
+      setIsListening(false);
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const w = window as any;
+      if (!w.SpeechRecognition && !w.webkitSpeechRecognition) {
+        setError('Voice commands not supported in this browser. Use Chrome or Edge.');
+        return;
+      }
+      startListening();
+    }
+  }, [isListening, startListening]);
+
+  // Auto-start voice commands when a document is loaded
+  useEffect(() => {
+    if (paragraphs.length > 0 && !wantListeningRef.current) {
+      startListening();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paragraphs.length > 0]);
 
   const hasDocs = paragraphs.length > 0;
   const progress = hasDocs ? Math.round(((currentIdx + 1) / paragraphs.length) * 100) : 0;
