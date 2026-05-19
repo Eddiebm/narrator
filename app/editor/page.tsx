@@ -11,6 +11,7 @@ import {
   ChevronDown,
   FileDown,
   Loader2,
+  Music2,
 } from 'lucide-react';
 import type { SlideData, Voice, PresentationStyle, NarratorSession } from '@/lib/types';
 import { VOICES } from '@/lib/types';
@@ -149,6 +150,18 @@ export default function EditorPage() {
     a.click();
     URL.revokeObjectURL(url);
     setIsZipping(false);
+  }, [slides, presentationName]);
+
+  const downloadFullAudio = useCallback(() => {
+    const blobs = slides.map((s) => s.audioBlob).filter(Boolean) as Blob[];
+    if (blobs.length === 0) return;
+    const combined = new Blob(blobs, { type: 'audio/mpeg' });
+    const url = URL.createObjectURL(combined);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${presentationName}-narration-full.mp3`;
+    a.click();
+    URL.revokeObjectURL(url);
   }, [slides, presentationName]);
 
   const exportPptx = useCallback(async () => {
@@ -308,6 +321,22 @@ export default function EditorPage() {
             )}
             <span className="hidden sm:inline">
               {isZipping ? 'Zipping…' : generatedCount > 0 ? `MP3s (${generatedCount})` : 'MP3s'}
+            </span>
+          </button>
+
+          <button
+            onClick={downloadFullAudio}
+            disabled={generatedCount === 0}
+            title={
+              generatedCount === 0
+                ? 'Generate audio first'
+                : `Download all ${generatedCount} slides as one MP3`
+            }
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-card border border-surface-border hover:border-accent disabled:opacity-40 text-sm rounded-lg font-medium transition-all"
+          >
+            <Music2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">
+              {generatedCount > 0 ? `Full MP3 (${generatedCount})` : 'Full MP3'}
             </span>
           </button>
 
