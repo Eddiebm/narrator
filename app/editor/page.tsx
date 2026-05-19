@@ -9,9 +9,12 @@ import {
   ArrowLeft,
   Package,
   ChevronDown,
+  FileDown,
+  Loader2,
 } from 'lucide-react';
 import type { SlideData, Voice, PresentationStyle, NarratorSession } from '@/lib/types';
 import { VOICES } from '@/lib/types';
+import { loadPptx } from '@/lib/idb';
 import SlideCard from '@/components/SlideCard';
 
 export default function EditorPage() {
@@ -23,6 +26,7 @@ export default function EditorPage() {
   const [globalSpeed, setGlobalSpeed] = useState(1.0);
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
   const [isZipping, setIsZipping] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const audioUrlsRef = useRef<string[]>([]);
 
   useEffect(() => {
@@ -147,6 +151,27 @@ export default function EditorPage() {
     setIsZipping(false);
   }, [slides, presentationName]);
 
+  const exportPptx = useCallback(async () => {
+    const pptxBuffer = await loadPptx();
+    if (!pptxBuffer) {
+      alert('Original file not found — please re-upload the presentation.');
+      return;
+    }
+    setIsExporting(true);
+    try {
+      const { embedAudioInPptx } = await import('@/lib/pptx-audio');
+      const result = await embedAudioInPptx(pptxBuffer, slides.map((s) => s.audioBlob));
+      const url = URL.createObjectURL(result);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${presentationName}-narrated.pptx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setIsExporting(false);
+    }
+  }, [slides, presentationName]);
+
   // Persist script edits back to localStorage
   const persistScripts = (changedIndex: number, newScript: string) => {
     const raw = localStorage.getItem('narrator-session');
@@ -257,7 +282,27 @@ export default function EditorPage() {
               <Download className="w-3.5 h-3.5" />
             )}
             <span className="hidden sm:inline">
-              {isZipping ? 'Zipping…' : generatedCount > 0 ? `ZIP (${generatedCount})` : 'ZIP All'}
+              {isZipping ? 'Zipping…' : generatedCount > 0 ? `MP3s (${generatedCount})` : 'MP3s'}
+            </span>
+          </button>
+
+          <button
+            onClick={exportPptx}
+            disabled={generatedCount === 0 || isExporting}
+            title={
+              generatedCount === 0
+                ? 'Generate audio first'
+                : `Embed ${generatedCount} narration${generatedCount !== 1 ? 's' : ''} into PPTX`
+            }
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-card border border-surface-border hover:border-accent disabled:opacity-40 text-sm rounded-lg font-medium transition-all"
+          >
+            {isExporting ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <FileDown className="w-3.5 h-3.5" />
+            )}
+            <span className="hidden sm:inline">
+              {isExporting ? 'Exporting…' : generatedCount > 0 ? `PPTX (${generatedCount})` : 'PPTX'}
             </span>
           </button>
         </div>

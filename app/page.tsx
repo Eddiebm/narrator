@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Mic2, Upload, FileText, Sparkles, CheckCircle2, Loader2 } from 'lucide-react';
 import type { ParsedSlide, PresentationStyle, NarratorSession } from '@/lib/types';
 import { STYLES } from '@/lib/types';
+import { savePptx } from '@/lib/idb';
 
 type Step = 'idle' | 'parsing' | 'generating' | 'done';
 
@@ -28,6 +29,9 @@ export default function UploadPage() {
       setStep('parsing');
 
       try {
+
+      // Save original file to IndexedDB so the editor can export PPTX with audio
+      file.arrayBuffer().then((buf) => savePptx(buf)).catch(() => {});
 
       // 1. Parse the PPTX
       const formData = new FormData();
