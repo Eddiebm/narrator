@@ -152,11 +152,26 @@ export default function EditorPage() {
   }, [slides, presentationName]);
 
   const exportPptx = useCallback(async () => {
-    const pptxBuffer = await loadPptx();
+    let pptxBuffer = await loadPptx();
+
     if (!pptxBuffer) {
-      alert('Original file not found — please re-upload the presentation.');
-      return;
+      // Original wasn't saved (uploaded before this feature) — ask them to pick it
+      const file = await new Promise<File | null>((resolve) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.pptx';
+        input.onchange = () => resolve(input.files?.[0] ?? null);
+        input.click();
+        // resolve null if they cancel (no oncancel in all browsers, handled by timeout)
+        setTimeout(() => resolve(null), 60000);
+      });
+      if (!file) return;
+      pptxBuffer = await file.arrayBuffer();
+      loadPptx; // re-use same key
+      const { savePptx } = await import('@/lib/idb');
+      await savePptx(pptxBuffer);
     }
+
     setIsExporting(true);
     try {
       const { embedAudioInPptx } = await import('@/lib/pptx-audio');

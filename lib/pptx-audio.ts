@@ -49,11 +49,11 @@ export async function embedAudioInPptx(
 }
 
 function audioShapeXml(shapeId: number, rId: string, n: number): string {
+  // hlinkClick intentionally omitted — auto-play is handled via timing;
+  // including it with the 'audio' rel type causes PowerPoint to reject it
   return `<p:sp>
       <p:nvSpPr>
-        <p:cNvPr id="${shapeId}" name="NarratorAudio${n}">
-          <a:hlinkClick r:id="${rId}" action="ppaction://media"/>
-        </p:cNvPr>
+        <p:cNvPr id="${shapeId}" name="NarratorAudio${n}"/>
         <p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr>
         <p:nvPr><p:audioFile r:link="${rId}"/></p:nvPr>
       </p:nvSpPr>
