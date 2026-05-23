@@ -152,19 +152,14 @@ export default function ReaderPage() {
   }, [isPlaying, paragraphs, currentIdx, playFrom]);
 
   const skipForward = useCallback(() => {
-    audioRef.current?.pause();
-    setIsPlaying(false);
     const next = Math.min(currentIdx + 1, paragraphs.length - 1);
-    setCurrentIdx(next);
-    audioCacheRef.current.delete(next); // force re-fetch at new position
-  }, [currentIdx, paragraphs.length]);
+    playFrom(next);
+  }, [currentIdx, paragraphs.length, playFrom]);
 
   const skipBack = useCallback(() => {
-    audioRef.current?.pause();
-    setIsPlaying(false);
     const prev = Math.max(currentIdx - 1, 0);
-    setCurrentIdx(prev);
-  }, [currentIdx]);
+    playFrom(prev);
+  }, [currentIdx, playFrom]);
 
   const resetAudio = useCallback(() => {
     if (audioRef.current) {
@@ -494,7 +489,7 @@ export default function ReaderPage() {
               <p
                 key={i}
                 ref={(el) => { paraRefs.current[i] = el; }}
-                onClick={() => { audioRef.current?.pause(); setIsPlaying(false); setCurrentIdx(i); }}
+                onClick={() => playFrom(i)}
                 className={`text-lg leading-relaxed rounded-xl px-5 py-4 cursor-pointer transition-all ${
                   i === currentIdx
                     ? 'bg-accent/15 border border-accent/40 text-ink'
