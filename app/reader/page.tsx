@@ -107,21 +107,33 @@ export default function ReaderPage() {
   const playFrom = useCallback(async (idx: number) => {
     if (idx >= paragraphs.length) { setIsPlaying(false); return; }
     setCurrentIdx(idx);
+    currentIdxRef.current = idx;
     setIsLoading(true);
     const url = await fetchAudio(idx);
     setIsLoading(false);
     if (!url) { setError('Audio failed for this paragraph.'); setIsPlaying(false); return; }
 
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = url;
-      audioRef.current.playbackRate = 1; // speed already baked into TTS
-      audioRef.current.onended = () => playFrom(idx + 1);
-      audioRef.current.play();
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    audio.pause();
+    audio.onended = null; // clear before setting src to avoid stale fire
+    audio.src = url;
+    audio.load();         // force the element to accept the new src
+    audio.onended = () => playFrom(idx + 1);
+
+    try {
+      await audio.play();
       setIsPlaying(true);
-      // Prefetch next paragraph
-      if (idx + 1 < paragraphs.length) fetchAudio(idx + 1);
+    } catch (err: unknown) {
+      // AbortError is benign (src changed before play finished) — anything else is real
+      if (err instanceof Error && err.name !== 'AbortError') {
+        setError('Playback blocked. Tap the play button to start.');
+        setIsPlaying(false);
+      }
     }
+    // Prefetch next paragraph
+    if (idx + 1 < paragraphs.length) fetchAudio(idx + 1);
   }, [paragraphs, fetchAudio]);
 
   const togglePlay = useCallback(() => {
@@ -130,9 +142,9 @@ export default function ReaderPage() {
       audioRef.current?.pause();
       setIsPlaying(false);
     } else {
-      if (audioRef.current?.src && audioRef.current.paused) {
-        audioRef.current.play();
-        setIsPlaying(true);
+      const audio = audioRef.current;
+      if (audio?.src && audio.paused && audio.readyState >= 2) {
+        audio.play().then(() => setIsPlaying(true)).catch(() => playFrom(currentIdx));
       } else {
         playFrom(currentIdx);
       }
