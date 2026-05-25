@@ -12,6 +12,7 @@ import {
   FileDown,
   Loader2,
   Music2,
+  Video,
 } from 'lucide-react';
 import type { SlideData, Voice, PresentationStyle, NarratorSession } from '@/lib/types';
 import { VOICES } from '@/lib/types';
@@ -28,6 +29,8 @@ export default function EditorPage() {
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
   const [isZipping, setIsZipping] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportingVideo, setIsExportingVideo] = useState(false);
+  const [videoProgress, setVideoProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
   const audioUrlsRef = useRef<string[]>([]);
 
   useEffect(() => {
@@ -210,6 +213,22 @@ export default function EditorPage() {
     }
   }, [slides, presentationName]);
 
+  const exportVideo = useCallback(async () => {
+    const { exportVideo: runExport } = await import('@/lib/video-export');
+    setIsExportingVideo(true);
+    setVideoProgress({ current: 0, total: slides.length });
+    try {
+      await runExport(
+        slides.map((s) => ({ title: s.title, body: s.body, audioBlob: s.audioBlob })),
+        presentationName,
+        (current, total) => setVideoProgress({ current, total })
+      );
+    } finally {
+      setIsExportingVideo(false);
+      setVideoProgress({ current: 0, total: 0 });
+    }
+  }, [slides, presentationName]);
+
   // Persist script edits back to localStorage
   const persistScripts = (changedIndex: number, newScript: string) => {
     const raw = localStorage.getItem('narrator-session');
@@ -357,6 +376,28 @@ export default function EditorPage() {
             )}
             <span className="hidden sm:inline">
               {isExporting ? 'Exporting…' : generatedCount > 0 ? `PPTX (${generatedCount})` : 'PPTX'}
+            </span>
+          </button>
+
+          <button
+            onClick={exportVideo}
+            disabled={generatedCount === 0 || isExportingVideo}
+            title={
+              generatedCount === 0
+                ? 'Generate audio first'
+                : `Render narrated video (${generatedCount} slides with audio)`
+            }
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-card border border-surface-border hover:border-accent disabled:opacity-40 text-sm rounded-lg font-medium transition-all"
+          >
+            {isExportingVideo ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Video className="w-3.5 h-3.5" />
+            )}
+            <span className="hidden sm:inline">
+              {isExportingVideo && videoProgress.total > 0
+                ? `${videoProgress.current}/${videoProgress.total}`
+                : 'Video'}
             </span>
           </button>
         </div>

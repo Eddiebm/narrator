@@ -8,7 +8,9 @@
     "start": "next start -p 3010"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
     "@types/pdf-parse": "^1.1.5",
+    "@vercel/blob": "^2.4.0",
     "fast-xml-parser": "^4.3.6",
     "jszip": "^3.10.1",
     "lucide-react": "^0.379.0",

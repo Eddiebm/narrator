@@ -17,6 +17,7 @@ import {
   Mic,
   MicOff,
   Download,
+  Share2,
 } from 'lucide-react';
 
 const VOICES = [
@@ -50,6 +51,9 @@ export default function ReaderPage() {
   const [lastCommand, setLastCommand] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState({ current: 0, total: 0 });
+  const [isSharing, setIsSharing] = useState(false);
+  const [shareLink, setShareLink] = useState<string | null>(null);
+  const [showCopied, setShowCopied] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
   const isPlayingRef = useRef(false);
@@ -375,6 +379,30 @@ export default function ReaderPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paragraphs.length > 0]);
 
+  const copyShare = useCallback(async () => {
+    if (!paragraphs.length || isSharing) return;
+    setIsSharing(true);
+    try {
+      const res = await fetch('/api/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'reader',
+          name: fileName || 'Document Reader',
+          content: { paragraphs, voice, speed },
+        }),
+      });
+      if (!res.ok) return;
+      const { url } = await res.json() as { id: string; url: string };
+      setShareLink(url);
+      await navigator.clipboard.writeText(url);
+      setShowCopied(true);
+      setTimeout(() => setShowCopied(false), 2500);
+    } finally {
+      setIsSharing(false);
+    }
+  }, [paragraphs, voice, speed, fileName, isSharing]);
+
   const hasDocs = paragraphs.length > 0;
   const progress = hasDocs ? Math.round(((currentIdx + 1) / paragraphs.length) * 100) : 0;
 
@@ -458,6 +486,25 @@ export default function ReaderPage() {
                 {isDownloading ? `${downloadProgress.current}/${downloadProgress.total}` : 'MP3'}
               </span>
             </button>
+          )}
+
+          {hasDocs && (
+            <div className="relative">
+              <button
+                onClick={copyShare}
+                disabled={isSharing}
+                title="Share a link to this document"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-card border border-surface-border hover:border-accent disabled:opacity-60 text-sm rounded-lg font-medium transition-all"
+              >
+                {isSharing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Share2 className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline">Share</span>
+              </button>
+              {showCopied && (
+                <span className="absolute -bottom-7 left-1/2 -translate-x-1/2 text-xs bg-surface-card border border-accent/40 text-accent-light px-2 py-0.5 rounded-full whitespace-nowrap">
+                  Copied!
+                </span>
+              )}
+            </div>
           )}
         </div>
 

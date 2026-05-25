@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Upload, Mic2, Play, Pause, SkipBack, SkipForward,
   Loader2, ChevronDown, RefreshCw, Download, Plus, Trash2,
+  Share2, Rss,
 } from 'lucide-react';
 import type { PodcastLine, Host } from '@/app/api/podcast-gen/route';
 
@@ -67,6 +68,9 @@ export default function PodcastPage() {
   const [speed, setSpeed] = useState(1.0);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState({ current: 0, total: 0 });
+  const [isSharing, setIsSharing] = useState(false);
+  const [shareId, setShareId] = useState<string | null>(null);
+  const [showCopied, setShowCopied] = useState(false);
 
   const currentIdxRef = useRef(0);
   useEffect(() => { currentIdxRef.current = currentIdx; }, [currentIdx]);
@@ -272,6 +276,63 @@ export default function PodcastPage() {
     }
   }, [lines, hosts, speed, deckName, isDownloading]);
 
+  const handleShare = useCallback(async () => {
+    if (!lines.length || isSharing) return;
+    setIsSharing(true);
+    try {
+      // 1. Create the share record
+      const shareRes = await fetch('/api/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'podcast',
+          name: deckName || 'Podcast',
+          content: { lines, hosts },
+        }),
+      });
+      if (!shareRes.ok) return;
+      const { id, url } = await shareRes.json() as { id: string; url: string };
+      setShareId(id);
+
+      // 2. Render all audio blobs
+      const blobs: Blob[] = [];
+      for (let i = 0; i < lines.length; i++) {
+        let blob = blobCacheRef.current.get(i);
+        if (!blob) {
+          const line = lines[i];
+          const host = hosts.find(h => h.name === line.speaker);
+          const voice = host?.voice ?? VOICES[0].id;
+          const res = await fetch('/api/reader-tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: line.text, voice, speed }),
+          });
+          if (res.ok) {
+            blob = await res.blob();
+            blobCacheRef.current.set(i, blob);
+          }
+        }
+        if (blob) blobs.push(blob);
+      }
+
+      if (blobs.length) {
+        const combined = new Blob(blobs, { type: 'audio/mpeg' });
+        const formData = new FormData();
+        formData.append('audio', combined);
+        formData.append('shareId', id);
+        formData.append('name', deckName || 'Podcast');
+        await fetch('/api/podcast-upload', { method: 'POST', body: formData });
+      }
+
+      // 3. Copy to clipboard
+      await navigator.clipboard.writeText(url);
+      setShowCopied(true);
+      setTimeout(() => setShowCopied(false), 2500);
+    } finally {
+      setIsSharing(false);
+    }
+  }, [lines, hosts, speed, deckName, isSharing]);
+
   const hostColour = (name: string) => {
     const idx = hosts.findIndex(h => h.name === name);
     return AVATAR_COLOURS[idx % AVATAR_COLOURS.length];
@@ -461,6 +522,35 @@ export default function PodcastPage() {
               {isDownloading ? `${downloadProgress.current}/${downloadProgress.total}` : 'MP3'}
             </span>
           </button>
+
+          <div className="relative">
+            <button
+              onClick={handleShare}
+              disabled={isSharing}
+              title="Share this podcast"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-card border border-surface-border hover:border-accent disabled:opacity-60 text-sm rounded-lg font-medium transition-all"
+            >
+              {isSharing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Share2 className="w-3.5 h-3.5" />}
+              <span className="hidden sm:inline">Share</span>
+            </button>
+            {showCopied && (
+              <span className="absolute -bottom-7 left-1/2 -translate-x-1/2 text-xs bg-surface-card border border-accent/40 text-accent-light px-2 py-0.5 rounded-full whitespace-nowrap">
+                Copied!
+              </span>
+            )}
+          </div>
+
+          {shareId && (
+            <a
+              href={`/api/rss/${shareId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-card border border-surface-border hover:border-accent text-sm rounded-lg font-medium transition-all text-ink-muted"
+            >
+              <Rss className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">RSS</span>
+            </a>
+          )}
         </div>
       </header>
 
