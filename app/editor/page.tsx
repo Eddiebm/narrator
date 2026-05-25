@@ -13,6 +13,7 @@ import {
   Loader2,
   Music2,
   Video,
+  Archive,
 } from 'lucide-react';
 import type { SlideData, Voice, PresentationStyle, NarratorSession } from '@/lib/types';
 import { VOICES } from '@/lib/types';
@@ -31,6 +32,8 @@ export default function EditorPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingVideo, setIsExportingVideo] = useState(false);
   const [videoProgress, setVideoProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
+  const [isExportingPackage, setIsExportingPackage] = useState(false);
+  const [packagePhase, setPackagePhase] = useState<string>('');
   const [exportError, setExportError] = useState<string | null>(null);
   const audioUrlsRef = useRef<string[]>([]);
 
@@ -258,6 +261,75 @@ export default function EditorPage() {
     }
   }, [slides, presentationName]);
 
+  const exportPackage = useCallback(async () => {
+    setIsExportingPackage(true);
+    setExportError(null);
+    const safeName = presentationName.slice(0, 60).replace(/[^a-z0-9]/gi, '-').toLowerCase();
+    try {
+      const JSZip = (await import('jszip')).default;
+      const zip = new JSZip();
+
+      // 1. Combined MP3 (instant — just concatenate blobs already in memory)
+      setPackagePhase('Building MP3…');
+      const audioBlobs = slides.map((s) => s.audioBlob).filter(Boolean) as Blob[];
+      if (audioBlobs.length) {
+        zip.file(`${safeName}-narration.mp3`, new Blob(audioBlobs, { type: 'audio/mpeg' }));
+      }
+
+      // 2. Narrated PPTX (embed audio into original PPTX client-side)
+      setPackagePhase('Building narrated PPTX…');
+      try {
+        let pptxBuffer = await loadPptx();
+        if (!pptxBuffer) {
+          const file = await new Promise<File | null>((resolve) => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.pptx';
+            input.onchange = () => resolve(input.files?.[0] ?? null);
+            input.click();
+            setTimeout(() => resolve(null), 60000);
+          });
+          if (file) {
+            pptxBuffer = await file.arrayBuffer();
+            const { savePptx } = await import('@/lib/idb');
+            await savePptx(pptxBuffer);
+          }
+        }
+        if (pptxBuffer) {
+          const { embedAudioInPptx } = await import('@/lib/pptx-audio');
+          const { blob } = await embedAudioInPptx(pptxBuffer, slides.map((s) => s.audioBlob));
+          zip.file(`${safeName}-narrated.pptx`, blob);
+        }
+      } catch { /* skip pptx if it fails — still deliver mp3 + video */ }
+
+      // 3. MP4 video (renders in real-time — longest step)
+      setPackagePhase(`Rendering video (0/${slides.length})…`);
+      try {
+        const { exportVideoBlob } = await import('@/lib/video-export');
+        const { blob: videoBlob, ext } = await exportVideoBlob(
+          slides.map((s) => ({ title: s.title, body: s.body, audioBlob: s.audioBlob })),
+          (current, total) => setPackagePhase(`Rendering video (${current}/${total})…`)
+        );
+        zip.file(`${safeName}-narrated.${ext}`, videoBlob);
+      } catch { /* skip video if it fails */ }
+
+      // 4. Download the package
+      setPackagePhase('Packaging…');
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${safeName}-narrated-package.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Package export failed.');
+    } finally {
+      setIsExportingPackage(false);
+      setPackagePhase('');
+    }
+  }, [slides, presentationName]);
+
   // Persist script edits back to localStorage
   const persistScripts = (changedIndex: number, newScript: string) => {
     const raw = localStorage.getItem('narrator-session');
@@ -352,46 +424,62 @@ export default function EditorPage() {
           </button>
         </div>
 
-        {/* Row 2: combined exports — always visible, visually distinct */}
+        {/* Row 2: combined exports */}
         <div className="max-w-4xl mx-auto px-2 sm:px-4 py-2 flex items-center gap-2 border-t border-surface-border/50 overflow-x-auto scrollbar-none">
-          <span className="text-xs text-ink-muted flex-shrink-0 hidden sm:block">Export full presentation:</span>
+          {/* Primary: one-click full package */}
+          <button
+            onClick={exportPackage}
+            disabled={generatedCount === 0 || isExportingPackage || isExportingVideo}
+            title={generatedCount === 0 ? 'Generate audio first' : `Download MP3 + narrated PPTX + MP4 in one ZIP`}
+            className="flex items-center gap-1.5 px-4 py-1.5 bg-accent hover:bg-accent/90 disabled:opacity-40 text-white text-sm rounded-lg font-semibold transition-all flex-shrink-0"
+          >
+            {isExportingPackage ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Package className="w-3.5 h-3.5" />}
+            <span>
+              {isExportingPackage
+                ? packagePhase || 'Packaging…'
+                : generatedCount > 0 ? `Download Package (${generatedCount} slides)` : 'Download Package'}
+            </span>
+          </button>
 
+          <span className="text-ink-dim text-xs flex-shrink-0 hidden sm:block">or individually:</span>
+
+          {/* Secondary: individual exports */}
           <button
             onClick={downloadFullAudio}
             disabled={generatedCount === 0}
-            title={generatedCount === 0 ? 'Generate audio first' : `Download all ${generatedCount} slides as one MP3`}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-hover border border-accent/40 hover:border-accent disabled:opacity-40 disabled:border-surface-border text-sm rounded-lg font-medium transition-all flex-shrink-0"
+            title="Combined MP3 — all slides as one audio file"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-hover border border-surface-border hover:border-accent disabled:opacity-40 text-sm rounded-lg font-medium transition-all flex-shrink-0"
           >
-            <Music2 className="w-3.5 h-3.5 text-accent-light" />
-            <span>MP3 {generatedCount > 0 ? `(${generatedCount} slides)` : ''}</span>
+            <Music2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">MP3</span>
           </button>
 
           <button
             onClick={exportPptx}
             disabled={generatedCount === 0 || isExporting}
-            title={generatedCount === 0 ? 'Generate audio first' : `Embed ${generatedCount} narrations into PPTX`}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-hover border border-accent/40 hover:border-accent disabled:opacity-40 disabled:border-surface-border text-sm rounded-lg font-medium transition-all flex-shrink-0"
+            title="Narrated PPTX — slides with embedded auto-play audio"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-hover border border-surface-border hover:border-accent disabled:opacity-40 text-sm rounded-lg font-medium transition-all flex-shrink-0"
           >
-            {isExporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5 text-accent-light" />}
-            <span>{isExporting ? 'Embedding…' : `PPTX ${generatedCount > 0 ? `(${generatedCount} slides)` : ''}`}</span>
+            {isExporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />}
+            <span className="hidden sm:inline">{isExporting ? 'Embedding…' : 'PPTX'}</span>
           </button>
 
           <button
             onClick={exportVideo}
-            disabled={generatedCount === 0 || isExportingVideo}
-            title={generatedCount === 0 ? 'Generate audio first' : `Render all ${generatedCount} slides as one narrated MP4`}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-hover border border-accent/40 hover:border-accent disabled:opacity-40 disabled:border-surface-border text-sm rounded-lg font-medium transition-all flex-shrink-0"
+            disabled={generatedCount === 0 || isExportingVideo || isExportingPackage}
+            title="MP4 — all slides rendered as one continuous video"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-hover border border-surface-border hover:border-accent disabled:opacity-40 text-sm rounded-lg font-medium transition-all flex-shrink-0"
           >
-            {isExportingVideo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Video className="w-3.5 h-3.5 text-accent-light" />}
-            <span>
+            {isExportingVideo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Video className="w-3.5 h-3.5" />}
+            <span className="hidden sm:inline">
               {isExportingVideo && videoProgress.total > 0
-                ? `Rendering ${videoProgress.current}/${videoProgress.total}…`
-                : `MP4 ${generatedCount > 0 ? `(${generatedCount} slides)` : ''}`}
+                ? `${videoProgress.current}/${videoProgress.total}`
+                : 'MP4'}
             </span>
           </button>
 
           {generatedCount === 0 && (
-            <span className="text-xs text-ink-muted italic">— generate audio above first</span>
+            <span className="text-xs text-ink-muted italic">— generate audio first</span>
           )}
         </div>
       </header>

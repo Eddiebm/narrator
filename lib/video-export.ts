@@ -117,11 +117,10 @@ async function playAudioThrough(
   }
 }
 
-export async function exportVideo(
+async function renderVideo(
   slides: VideoSlide[],
-  title: string,
   onProgress?: (current: number, total: number) => void
-): Promise<void> {
+): Promise<{ blob: Blob; ext: string }> {
   const canvas = document.createElement('canvas');
   canvas.width = CANVAS_WIDTH;
   canvas.height = CANVAS_HEIGHT;
@@ -129,11 +128,8 @@ export async function exportVideo(
   if (!ctx) throw new Error('Could not get 2D context from canvas');
 
   const videoStream = canvas.captureStream(FPS);
-
   const audioCtx = new AudioContext();
-  // Resume in case browser suspended before first user-gesture check
   if (audioCtx.state === 'suspended') await audioCtx.resume();
-
   const audioDest = audioCtx.createMediaStreamDestination();
   const audioTrack = audioDest.stream.getAudioTracks()[0];
 
@@ -149,30 +145,39 @@ export async function exportVideo(
 
   const total = slides.length;
   for (let i = 0; i < total; i++) {
-    const slide = slides[i];
     onProgress?.(i + 1, total);
-    drawSlide(ctx, slide, i + 1, total);
-
-    if (slide.audioBlob) {
-      await playAudioThrough(slide.audioBlob, audioCtx, audioDest);
+    drawSlide(ctx, slides[i], i + 1, total);
+    if (slides[i].audioBlob) {
+      await playAudioThrough(slides[i].audioBlob!, audioCtx, audioDest);
     } else {
       await new Promise<void>((r) => setTimeout(r, 3000));
     }
   }
 
-  await new Promise<void>((resolve) => {
-    recorder.onstop = () => resolve();
-    recorder.stop();
-  });
+  await new Promise<void>((resolve) => { recorder.onstop = () => resolve(); recorder.stop(); });
   await audioCtx.close();
 
-  const ext = getFileExtension(mimeType);
+  return { blob: new Blob(chunks, { type: mimeType }), ext: getFileExtension(mimeType) };
+}
+
+export async function exportVideo(
+  slides: VideoSlide[],
+  title: string,
+  onProgress?: (current: number, total: number) => void
+): Promise<void> {
+  const { blob, ext } = await renderVideo(slides, onProgress);
   const safeName = title.slice(0, 60).replace(/[^a-z0-9]/gi, '-').toLowerCase();
-  const blob = new Blob(chunks, { type: mimeType });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
   a.download = `${safeName}-narrated.${ext}`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+export async function exportVideoBlob(
+  slides: VideoSlide[],
+  onProgress?: (current: number, total: number) => void
+): Promise<{ blob: Blob; ext: string }> {
+  return renderVideo(slides, onProgress);
 }
