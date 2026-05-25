@@ -161,15 +161,18 @@ export default function EditorPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ script: slide.script, voice, speed }),
         });
-        if (!res.ok) throw new Error('TTS failed');
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.error || `TTS ${res.status}`);
+        }
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         audioUrlsRef.current.push(url);
         updateSlide(index, { audioBlob: blob, audioUrl: url, isGeneratingAudio: false });
-      } catch {
+      } catch (err) {
         updateSlide(index, {
           isGeneratingAudio: false,
-          error: 'Audio generation failed. Try again.',
+          error: err instanceof Error ? err.message : 'Audio generation failed. Try again.',
         });
       }
     },

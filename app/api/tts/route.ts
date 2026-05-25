@@ -87,7 +87,10 @@ export async function POST(req: NextRequest) {
         speed: Math.min(Math.max(speed, 0.25), 4.0),
       }),
     });
-    if (!res.ok) return NextResponse.json({ error: 'OpenAI TTS failed' }, { status: 500 });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => res.status.toString());
+      return NextResponse.json({ error: `OpenAI TTS ${res.status}: ${errText}` }, { status: 500 });
+    }
     const buf = await res.arrayBuffer();
     return new NextResponse(buf, { headers: { 'Content-Type': 'audio/mpeg', 'X-Engine': 'openai-hd' } });
   }
