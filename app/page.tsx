@@ -60,19 +60,17 @@ export default function UploadPage() {
         name: string;
       };
 
-      // 2. Generate scripts
+      // 2. Generate scripts — one per request so each stays well inside edge runtime limits
       setStep('generating');
       setProgress({ current: 0, total: slides.length });
 
-      const batchSize = 5;
       const allScripts: string[] = [];
 
-      for (let i = 0; i < slides.length; i += batchSize) {
-        const batch = slides.slice(i, i + batchSize);
+      for (let i = 0; i < slides.length; i++) {
         const genRes = await fetch('/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ slides: batch, style }),
+          body: JSON.stringify({ slide: slides[i], style }),
         });
         if (!genRes.ok) {
           const body = await genRes.json().catch(() => ({}));
@@ -80,9 +78,9 @@ export default function UploadPage() {
           setStep('idle');
           return;
         }
-        const { scripts } = await genRes.json();
-        allScripts.push(...(scripts ?? []));
-        setProgress({ current: Math.min(i + batchSize, slides.length), total: slides.length });
+        const { script } = await genRes.json();
+        allScripts.push(script ?? '');
+        setProgress({ current: i + 1, total: slides.length });
       }
 
       // 3. Save session and redirect

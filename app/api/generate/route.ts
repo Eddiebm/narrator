@@ -1,3 +1,5 @@
+export const runtime = 'edge';
+
 import { NextRequest, NextResponse } from 'next/server';
 import type { ParsedSlide, PresentationStyle } from '@/lib/types';
 import { MODELS } from '@/lib/models';
@@ -15,7 +17,7 @@ const STYLE_PROMPTS: Record<PresentationStyle, string> = {
     'Warm and accessible, like explaining to a smart friend. Uses everyday language and rhetorical questions.',
 };
 
-async function generateScript(slide: ParsedSlide, style: PresentationStyle): Promise<string> {
+async function generateScript(slide: ParsedSlide, style: PresentationStyle, apiKey: string): Promise<string> {
   const content = [
     slide.title ? `Title: ${slide.title}` : '',
     slide.body.length ? `Slide content:\n${slide.body.join('\n')}` : '',
@@ -30,7 +32,7 @@ async function generateScript(slide: ParsedSlide, style: PresentationStyle): Pro
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
       model: MODELS.scriptGeneration,
@@ -67,18 +69,20 @@ Return only the narration text. No labels, no quotes.`,
 }
 
 export async function POST(request: NextRequest) {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) throw new Error('OPENROUTER_API_KEY is not set');
+
   try {
-    const { slides, style = 'professional' } = (await request.json()) as {
-      slides: ParsedSlide[];
+    const { slide, style = 'professional' } = (await request.json()) as {
+      slide: ParsedSlide;
       style: PresentationStyle;
     };
 
-    const scripts = await Promise.all(slides.map((s) => generateScript(s, style)));
+    const script = await generateScript(slide, style, apiKey);
 
-    return NextResponse.json({ scripts });
+    return NextResponse.json({ script });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error('Generate error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
