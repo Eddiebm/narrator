@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Mic2, Upload, FileText, Sparkles, CheckCircle2, Loader2, BookOpen } from 'lucide-react';
+import { Mic2, Upload, FileText, Sparkles, CheckCircle2, Loader2, BookOpen, Info } from 'lucide-react';
 import type { ParsedSlide, PresentationStyle, NarratorSession } from '@/lib/types';
 import { STYLES } from '@/lib/types';
 import { savePptx } from '@/lib/idb';
@@ -202,6 +202,55 @@ export default function UploadPage() {
         <p className="mt-4 text-sm text-red-400 bg-red-950/40 border border-red-900 rounded-lg px-4 py-2">
           {error}
         </p>
+      )}
+
+      {/* Cost breakdown */}
+      {!isProcessing && (
+        <div className="w-full max-w-lg mt-10">
+          <details className="group">
+            <summary className="flex items-center gap-1.5 text-xs text-ink-dim cursor-pointer hover:text-ink-muted transition-colors list-none">
+              <Info className="w-3.5 h-3.5" />
+              What does this cost?
+              <span className="ml-auto group-open:rotate-180 transition-transform">▾</span>
+            </summary>
+            <div className="mt-3 bg-surface-card border border-surface-border rounded-xl overflow-hidden text-xs">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-surface-border">
+                    <th className="text-left px-4 py-2 text-ink-muted font-medium">Feature</th>
+                    <th className="text-right px-4 py-2 text-ink-muted font-medium">Cost</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-border">
+                  {[
+                    { label: 'Script generation', detail: 'Claude Sonnet · per slide', cost: '~$0.006' },
+                    { label: 'Script refinement', detail: 'Gemini Flash · per edit', cost: '< $0.001' },
+                    { label: 'Presentation TTS', detail: 'Edge TTS (Microsoft)', cost: 'Free' },
+                    { label: 'Reader TTS', detail: 'Edge TTS · OpenAI HD if key set', cost: 'Free / $0.003 per para' },
+                    { label: 'Podcast episode', detail: 'Claude Sonnet · per generation', cost: '~$0.08' },
+                    { label: 'PPTX export', detail: 'Client-side processing', cost: 'Free' },
+                  ].map(({ label, detail, cost }) => (
+                    <tr key={label} className="hover:bg-surface-hover transition-colors">
+                      <td className="px-4 py-2.5">
+                        <p className="text-ink font-medium">{label}</p>
+                        <p className="text-ink-dim">{detail}</p>
+                      </td>
+                      <td className={`px-4 py-2.5 text-right font-mono font-semibold ${cost === 'Free' ? 'text-emerald-400' : 'text-ink'}`}>
+                        {cost}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t border-surface-border bg-surface/40">
+                    <td className="px-4 py-2.5 text-ink-muted">Typical 10-slide deck + podcast</td>
+                    <td className="px-4 py-2.5 text-right font-mono font-semibold text-ink">~$0.14</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </details>
+        </div>
       )}
     </main>
   );
