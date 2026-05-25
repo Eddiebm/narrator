@@ -3,10 +3,11 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Mic2, Upload, FileText, Sparkles, CheckCircle2, Loader2, BookOpen, Info, Clock, Trash2 } from 'lucide-react';
+import { Mic2, Upload, FileText, Sparkles, CheckCircle2, Loader2, BookOpen, Info, Clock, Trash2, Music2, Package } from 'lucide-react';
 import type { ParsedSlide, PresentationStyle, NarratorSession } from '@/lib/types';
 import { STYLES } from '@/lib/types';
-import { savePptx, saveSession, listSessions, deleteSession, loadSession } from '@/lib/idb';
+import { MODELS } from '@/lib/models';
+import { savePptx, saveSession, listSessions, deleteSession, loadSession, clearAllSessions } from '@/lib/idb';
 import type { SavedSession } from '@/lib/idb';
 
 type Step = 'idle' | 'parsing' | 'generating' | 'done';
@@ -14,7 +15,10 @@ type Step = 'idle' | 'parsing' | 'generating' | 'done';
 export default function UploadPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const zipInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isMerging, setIsMerging] = useState(false);
+  const [mergeError, setMergeError] = useState<string | null>(null);
   const [step, setStep] = useState<Step>('idle');
   const [style, setStyle] = useState<PresentationStyle>('professional');
   const [progress, setProgress] = useState({ current: 0, total: 0 });
@@ -120,6 +124,37 @@ export default function UploadPage() {
     [processFile]
   );
 
+  const mergeZip = useCallback(async (file: File) => {
+    if (!file.name.endsWith('.zip')) { setMergeError('Please pick the narration .zip file.'); return; }
+    setIsMerging(true);
+    setMergeError(null);
+    try {
+      const JSZip = (await import('jszip')).default;
+      const zip = await JSZip.loadAsync(await file.arrayBuffer());
+      const mp3Files = Object.entries(zip.files)
+        .filter(([name, f]) => name.toLowerCase().endsWith('.mp3') && !f.dir)
+        .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }));
+      if (!mp3Files.length) { setMergeError('No MP3 files found in that ZIP.'); return; }
+      const blobs: Blob[] = [];
+      for (const [, f] of mp3Files) {
+        const buf = await f.async('arraybuffer');
+        blobs.push(new Blob([buf], { type: 'audio/mpeg' }));
+      }
+      const combined = new Blob(blobs, { type: 'audio/mpeg' });
+      const url = URL.createObjectURL(combined);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = file.name.replace(/\.zip$/i, '') + '-combined.mp3';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setMergeError(err instanceof Error ? err.message : 'Failed to merge ZIP.');
+    } finally {
+      setIsMerging(false);
+      if (zipInputRef.current) zipInputRef.current.value = '';
+    }
+  }, []);
+
   const isProcessing = step !== 'idle';
 
   return (
@@ -211,6 +246,39 @@ export default function UploadPage() {
         </p>
       )}
 
+      {/* Merge narration ZIP → single MP3 */}
+      {!isProcessing && (
+        <div className="w-full max-w-lg mt-6">
+          <div className="bg-surface-card border border-surface-border rounded-xl px-4 py-3 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-surface-hover border border-surface-border flex items-center justify-center flex-shrink-0">
+              <Package className="w-4 h-4 text-ink-muted" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-ink font-medium">Already have a narration ZIP?</p>
+              <p className="text-xs text-ink-muted">Combine all slides into one MP3 file instantly</p>
+            </div>
+            <button
+              onClick={() => zipInputRef.current?.click()}
+              disabled={isMerging}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-hover border border-surface-border hover:border-accent disabled:opacity-50 text-sm rounded-lg font-medium transition-all flex-shrink-0"
+            >
+              {isMerging ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Music2 className="w-3.5 h-3.5" />}
+              <span>{isMerging ? 'Merging…' : 'Merge ZIP'}</span>
+            </button>
+            <input
+              ref={zipInputRef}
+              type="file"
+              accept=".zip"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) mergeZip(f); }}
+            />
+          </div>
+          {mergeError && (
+            <p className="mt-2 text-xs text-red-400 bg-red-950/40 border border-red-900 rounded-lg px-3 py-1.5">{mergeError}</p>
+          )}
+        </div>
+      )}
+
       {/* Cost breakdown */}
       {!isProcessing && (
         <div className="w-full max-w-lg mt-10">
@@ -230,11 +298,11 @@ export default function UploadPage() {
                 </thead>
                 <tbody className="divide-y divide-surface-border">
                   {[
-                    { label: 'Script generation', detail: 'Claude Sonnet · per slide', cost: '~$0.006' },
-                    { label: 'Script refinement', detail: 'Gemini Flash · per edit', cost: '< $0.001' },
+                    { label: 'Script generation', detail: `${MODELS.scriptGeneration.split('/')[1]} · per slide`, cost: '~$0.006' },
+                    { label: 'Script refinement', detail: `${MODELS.scriptRefinement.split('/')[1]} · per edit`, cost: '< $0.001' },
                     { label: 'Presentation TTS', detail: 'Edge TTS (Microsoft)', cost: 'Free' },
                     { label: 'Reader TTS', detail: 'Edge TTS · OpenAI HD if key set', cost: 'Free / $0.003 per para' },
-                    { label: 'Podcast episode', detail: 'Claude Sonnet · per generation', cost: '~$0.08' },
+                    { label: 'Podcast episode', detail: `${MODELS.scriptGeneration.split('/')[1]} · per generation`, cost: '~$0.08' },
                     { label: 'PPTX export', detail: 'Client-side processing', cost: 'Free' },
                   ].map(({ label, detail, cost }) => (
                     <tr key={label} className="hover:bg-surface-hover transition-colors">
@@ -266,6 +334,16 @@ export default function UploadPage() {
           <h2 className="text-xs font-medium text-ink-muted uppercase tracking-wider mb-3 flex items-center gap-1.5">
             <Clock className="w-3.5 h-3.5" />
             Recent presentations
+            <button
+              type="button"
+              onClick={async () => {
+                await clearAllSessions();
+                setSavedSessions([]);
+              }}
+              className="ml-auto text-xs text-ink-dim hover:text-red-400 transition-colors"
+            >
+              Clear all
+            </button>
           </h2>
           <div className="bg-surface-card border border-surface-border rounded-xl overflow-hidden">
             {savedSessions.map((s, i) => (
