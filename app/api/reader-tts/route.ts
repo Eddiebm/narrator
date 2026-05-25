@@ -50,7 +50,28 @@ function concatBuffers(buffers: ArrayBuffer[]): Uint8Array {
   return out;
 }
 
-const OPENAI_VOICES = ['nova', 'shimmer', 'alloy', 'echo', 'onyx', 'fable'] as const;
+const NEURAL_TO_OPENAI: Record<string, string> = {
+  'en-US-JennyNeural':        'nova',
+  'en-US-ChristopherNeural':  'onyx',
+  'en-GB-SoniaNeural':        'shimmer',
+  'en-GB-RyanNeural':         'fable',
+  'en-AU-NatashaNeural':      'shimmer',
+  'en-AU-WilliamNeural':      'echo',
+  'en-NG-AbeoNeural':         'echo',
+  'en-NG-EzinneNeural':       'nova',
+  'en-GH-NanaNeural':         'nova',
+  'en-KE-AsiliaNeural':       'shimmer',
+  'en-KE-ChilembaNeural':     'alloy',
+  'en-ZA-LeahNeural':         'nova',
+  'en-ZA-LukeNeural':         'onyx',
+};
+
+const OPENAI_VOICES = new Set(['nova', 'shimmer', 'alloy', 'echo', 'onyx', 'fable']);
+
+function resolveOpenAIVoice(voice: string): string {
+  if (OPENAI_VOICES.has(voice)) return voice;
+  return NEURAL_TO_OPENAI[voice] ?? 'nova';
+}
 
 export async function POST(req: NextRequest) {
   const { text, voice = 'nova', speed = 1.0 } = await req.json() as { text: string; voice?: string; speed?: number };
@@ -58,7 +79,7 @@ export async function POST(req: NextRequest) {
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (apiKey) {
-    const oaiVoice = OPENAI_VOICES.includes(voice as typeof OPENAI_VOICES[number]) ? voice : 'nova';
+    const oaiVoice = resolveOpenAIVoice(voice);
     const res = await fetch('https://api.openai.com/v1/audio/speech', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
