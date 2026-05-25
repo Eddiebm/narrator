@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Upload, Mic2, Play, Pause, SkipBack, SkipForward,
@@ -8,6 +8,7 @@ import {
   Share2, Rss,
 } from 'lucide-react';
 import type { PodcastLine, Host } from '@/app/api/podcast-gen/route';
+import { applyDict, loadDict } from '@/lib/pronunciation';
 
 // ── Voice pool ──────────────────────────────────────────────────────────────
 const VOICES = [
@@ -157,10 +158,11 @@ export default function PodcastPage() {
     const host = hosts.find(h => h.name === line.speaker);
     const voice = host?.voice ?? VOICES[0].id;
     try {
+      const processedText = applyDict(line.text, loadDict());
       const res = await fetch('/api/reader-tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: line.text, voice, speed }),
+        body: JSON.stringify({ text: processedText, voice, speed }),
       });
       if (!res.ok) return null;
       const blob = await res.blob();
@@ -337,6 +339,18 @@ export default function PodcastPage() {
     const idx = hosts.findIndex(h => h.name === name);
     return AVATAR_COLOURS[idx % AVATAR_COLOURS.length];
   };
+
+  const chapters = useMemo(() => {
+    let elapsed = 0;
+    return lines.map(line => {
+      const secs = Math.ceil(line.text.split(' ').length / 2.5);
+      const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+      const ss = String(elapsed % 60).padStart(2, '0');
+      const timestamp = `${mm}:${ss}`;
+      elapsed += secs;
+      return { timestamp, speaker: line.speaker, preview: line.text.slice(0, 70) + (line.text.length > 70 ? '…' : '') };
+    });
+  }, [lines]);
 
   // ── SETUP ─────────────────────────────────────────────────────────────────
   if (step === 'setup') return (
@@ -586,6 +600,24 @@ export default function PodcastPage() {
             </div>
           );
         })}
+
+        {chapters.length > 0 && (
+          <details className="mt-4 mb-4">
+            <summary className="cursor-pointer text-xs text-ink-muted hover:text-ink list-none flex items-center gap-1.5 px-2 py-1">
+              <span className="text-ink-dim">▸</span> {chapters.length} chapters
+            </summary>
+            <div className="mt-2 flex flex-col gap-1">
+              {chapters.map((ch, i) => (
+                <button key={i} onClick={() => playFrom(i)}
+                  className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-surface-hover text-left transition-colors w-full">
+                  <span className="text-xs font-mono text-accent-light w-10 flex-shrink-0">{ch.timestamp}</span>
+                  <span className="text-xs font-semibold text-ink-muted w-16 flex-shrink-0 truncate">{ch.speaker}</span>
+                  <span className="text-xs text-ink-dim truncate">{ch.preview}</span>
+                </button>
+              ))}
+            </div>
+          </details>
+        )}
       </main>
 
       {/* Playback bar */}

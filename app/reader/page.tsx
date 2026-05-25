@@ -19,7 +19,10 @@ import {
   Download,
   Share2,
   Languages,
+  BookMarked,
 } from 'lucide-react';
+import { applyDict, loadDict } from '@/lib/pronunciation';
+import PronunciationEditor from '@/components/PronunciationEditor';
 
 const VOICES = [
   { id: 'nova',    label: 'Nova',    description: 'Female · Warm' },
@@ -34,7 +37,7 @@ export default function ReaderPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const paraRefs = useRef<(HTMLParagraphElement | null)[]>([]);
+  const paraRefs = useRef<(HTMLElement | null)[]>([]);
   const audioUrlsRef = useRef<string[]>([]);
 
   const [paragraphs, setParagraphs] = useState<string[]>([]);
@@ -57,6 +60,8 @@ export default function ReaderPage() {
   const [showCopied, setShowCopied] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
   const [translateLang, setTranslateLang] = useState('Spanish');
+  const [audioProgress, setAudioProgress] = useState(0);
+  const [showPronunciation, setShowPronunciation] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
   const isPlayingRef = useRef(false);
@@ -99,10 +104,11 @@ export default function ReaderPage() {
     const para = paragraphs[idx];
     if (!para) return null;
     try {
+      const processedText = applyDict(para, loadDict());
       const res = await fetch('/api/reader-tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: para, voice, speed }),
+        body: JSON.stringify({ text: processedText, voice, speed }),
       });
       if (!res.ok) throw new Error('TTS failed');
       const blob = await res.blob();
@@ -188,6 +194,7 @@ export default function ReaderPage() {
     setIsPlaying(false);
     isPlayingRef.current = false;
     setError(null);
+    setAudioProgress(0);
   }, []);
 
   const downloadAudio = useCallback(async () => {
@@ -382,6 +389,17 @@ export default function ReaderPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paragraphs.length > 0]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (paragraphs.length > 0) {
+      const limit = Math.min(3, paragraphs.length);
+      for (let i = 0; i < limit; i++) {
+        fetchAudio(i);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paragraphs.length]);
+
   const copyShare = useCallback(async () => {
     if (!paragraphs.length || isSharing) return;
     setIsSharing(true);
@@ -438,7 +456,7 @@ export default function ReaderPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <audio ref={audioRef} />
+      <audio ref={audioRef} onTimeUpdate={() => { const el = audioRef.current; if (el?.duration) setAudioProgress(el.currentTime / el.duration); }} />
 
       {/* Header */}
       <header className="sticky top-0 z-10 bg-surface/90 backdrop-blur border-b border-surface-border">
@@ -503,6 +521,17 @@ export default function ReaderPage() {
             <span className="hidden sm:inline">{hasDocs ? 'New file' : 'Upload'}</span>
           </button>
           <input ref={fileInputRef} type="file" accept=".pptx,.pdf,.docx" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }} />
+
+          {hasDocs && (
+            <button
+              onClick={() => setShowPronunciation(true)}
+              title="Pronunciation editor"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-card border border-surface-border hover:border-accent text-sm rounded-lg font-medium transition-all"
+            >
+              <BookMarked className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Pronunciation</span>
+            </button>
+          )}
 
           {hasDocs && (
             <button
@@ -657,7 +686,7 @@ export default function ReaderPage() {
         {hasDocs && (
           <div className="flex flex-col gap-3">
             {paragraphs.map((para, i) => (
-              <p
+              <div
                 key={i}
                 ref={(el) => { paraRefs.current[i] = el; }}
                 onClick={() => playFrom(i)}
@@ -668,9 +697,18 @@ export default function ReaderPage() {
                 }`}
               >
                 {para}
-              </p>
+                {i === currentIdx && audioProgress > 0 && (
+                  <div className="mt-2 h-0.5 bg-surface-border rounded-full overflow-hidden">
+                    <div className="h-full bg-accent/70 rounded-full" style={{ width: `${audioProgress * 100}%`, transition: 'none' }} />
+                  </div>
+                )}
+              </div>
             ))}
           </div>
+        )}
+
+        {showPronunciation && (
+          <PronunciationEditor onClose={() => setShowPronunciation(false)} />
         )}
       </main>
 

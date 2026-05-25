@@ -6,6 +6,7 @@ import {
   ArrowLeft, Upload, ClipboardPaste, Play, Pause, SkipBack, SkipForward,
   Loader2, Users, Tv, BookOpen, ChevronDown, Mic, RefreshCw, Download,
 } from 'lucide-react';
+import { applyDict, loadDict } from '@/lib/pronunciation';
 
 // ─── Voice pool ────────────────────────────────────────────────────────────
 const VOICE_POOL = [
@@ -263,10 +264,11 @@ export default function ScriptPage() {
     }
 
     try {
+      const processedText = applyDict(line.text, loadDict());
       const res = await fetch('/api/reader-tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: line.text, voice, speed }),
+        body: JSON.stringify({ text: processedText, voice, speed }),
       });
       if (!res.ok) return null;
       const blob = await res.blob();
@@ -370,6 +372,20 @@ export default function ScriptPage() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [mode, togglePlay, toggleScroll, playLineFrom]);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (lines.length > 0) {
+      let count = 0;
+      for (let i = 0; i < lines.length && count < 3; i++) {
+        if (lines[i].type !== 'character') {
+          fetchLineAudio(i);
+          count++;
+        }
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lines.length]);
 
   const hasContent = lines.length > 0;
 

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import GlobalNav from '@/components/GlobalNav';
+import ShortcutGuide from '@/components/ShortcutGuide';
 
 export const metadata: Metadata = {
   title: 'Narrator — PPTX to Voiceover',
@@ -12,6 +13,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className="dark">
       <body className="min-h-screen bg-surface text-ink antialiased">
         <GlobalNav />
+        <ShortcutGuide />
         {children}
       </body>
     </html>
