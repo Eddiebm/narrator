@@ -171,11 +171,22 @@ export default function ScriptPage() {
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const res = await fetch('/api/extract-doc', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error || 'Failed to extract text.'); return; }
-      const text = data.paragraphs?.join('\n\n') ?? '';
-      loadContent(text, file.name);
+      if (file.name.endsWith('.pptx')) {
+        // PPTX: use the presentation parser
+        const res = await fetch('/api/parse', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!res.ok) { setError(data.error || 'Failed to parse PPTX.'); return; }
+        const text = data.slides
+          .map((s: { title: string; body: string[] }) => [s.title, ...s.body].join('\n'))
+          .join('\n\n');
+        loadContent(text, data.name ?? file.name);
+      } else {
+        // PDF / DOCX / TXT
+        const res = await fetch('/api/extract-doc', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!res.ok) { setError(data.error || 'Failed to extract text.'); return; }
+        loadContent(data.paragraphs?.join('\n\n') ?? '', file.name);
+      }
     } catch {
       setError('Failed to read the file.');
     } finally {
@@ -368,7 +379,7 @@ export default function ScriptPage() {
             <Upload className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">{hasContent ? 'New file' : 'Upload'}</span>
           </button>
-          <input ref={fileInputRef} type="file" accept=".pdf,.docx,.txt,.fdx" className="hidden"
+          <input ref={fileInputRef} type="file" accept=".pptx,.pdf,.docx,.txt,.fdx" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }} />
         </div>
       </header>
@@ -386,7 +397,7 @@ export default function ScriptPage() {
               </div>
               <div className="text-center">
                 <p className="font-medium text-ink mb-1">Upload a script</p>
-                <p className="text-sm text-ink-muted">PDF, DOCX, TXT, or Final Draft (.fdx)</p>
+                <p className="text-sm text-ink-muted">PPTX, PDF, DOCX, TXT, or Final Draft (.fdx)</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
