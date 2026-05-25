@@ -87,12 +87,11 @@ export async function POST(req: NextRequest) {
         speed: Math.min(Math.max(speed, 0.25), 4.0),
       }),
     });
-    if (!res.ok) {
-      const errText = await res.text().catch(() => res.status.toString());
-      return NextResponse.json({ error: `OpenAI TTS ${res.status}: ${errText}` }, { status: 500 });
+    if (res.ok) {
+      const buf = await res.arrayBuffer();
+      return new NextResponse(buf, { headers: { 'Content-Type': 'audio/mpeg', 'X-Engine': 'openai-hd' } });
     }
-    const buf = await res.arrayBuffer();
-    return new NextResponse(buf, { headers: { 'Content-Type': 'audio/mpeg', 'X-Engine': 'openai-hd' } });
+    // On quota/billing errors fall through to Google TTS so the app keeps working
   }
 
   // Fallback: Google Translate TTS (free but only one English voice family)
