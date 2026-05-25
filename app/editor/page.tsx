@@ -35,6 +35,9 @@ export default function EditorPage() {
   const [isExportingPackage, setIsExportingPackage] = useState(false);
   const [packagePhase, setPackagePhase] = useState<string>('');
   const [exportError, setExportError] = useState<string | null>(null);
+  const autoExportRef = useRef(false);
+  const autoStartedRef = useRef(false);
+  const wasGeneratingRef = useRef(false);
   const audioUrlsRef = useRef<string[]>([]);
 
   useEffect(() => {
@@ -59,6 +62,7 @@ export default function EditorPage() {
         error: null,
       }))
     );
+    autoExportRef.current = new URLSearchParams(window.location.search).get('autoExport') === '1';
   }, [router]);
 
   // Cleanup object URLs on unmount
@@ -67,6 +71,27 @@ export default function EditorPage() {
       audioUrlsRef.current.forEach(URL.revokeObjectURL);
     };
   }, []);
+
+  // Auto-start generation as soon as slides arrive (when ?autoExport=1)
+  useEffect(() => {
+    if (!autoExportRef.current || autoStartedRef.current || slides.length === 0) return;
+    autoStartedRef.current = true;
+    generateAllAudio();
+  // generateAllAudio is stable once slides exist; slides.length triggers this exactly once
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slides.length]);
+
+  // Auto-trigger package download the moment generation finishes
+  useEffect(() => {
+    const prev = wasGeneratingRef.current;
+    wasGeneratingRef.current = isGeneratingAll;
+    const doneCount = slides.filter((s) => s.audioUrl).length;
+    if (prev && !isGeneratingAll && autoStartedRef.current && doneCount > 0) {
+      exportPackage();
+    }
+  // exportPackage ref is stable; isGeneratingAll + slides are the only signals needed
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isGeneratingAll, slides]);
 
   const updateSlide = useCallback((index: number, updates: Partial<SlideData>) => {
     setSlides((prev) => prev.map((s, i) => (i === index ? { ...s, ...updates } : s)));
@@ -483,6 +508,19 @@ export default function EditorPage() {
           )}
         </div>
       </header>
+
+      {/* Auto-export progress banner */}
+      {autoStartedRef.current && (isGeneratingAll || isExportingPackage) && (
+        <div className="bg-accent/10 border-b border-accent/30 px-4 py-2 text-sm text-accent-light flex items-center gap-2">
+          <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0" />
+          <span>
+            {isGeneratingAll
+              ? `Generating narration… ${generatedCount}/${slides.length} slides`
+              : packagePhase || 'Building your download package…'}
+          </span>
+          <span className="ml-auto text-xs text-accent-light/70">Your download will start automatically</span>
+        </div>
+      )}
 
       {/* Export error banner */}
       {exportError && (

@@ -97,7 +97,7 @@ export default function UploadPage() {
       saveSession(session).then(() => listSessions().then(setSavedSessions)).catch(() => {});
 
       setStep('done');
-      setTimeout(() => router.push('/editor'), 600);
+      setTimeout(() => router.push('/editor?autoExport=1'), 600);
       } catch (err) {
         setError(`Something went wrong: ${err instanceof Error ? err.message : 'Unknown error'}`);
         setStep('idle');
