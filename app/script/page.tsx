@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Upload, ClipboardPaste, Play, Pause, SkipBack, SkipForward,
-  Loader2, Users, Tv, BookOpen, ChevronDown, Mic, RefreshCw,
+  Loader2, Users, Tv, BookOpen, ChevronDown, Mic, RefreshCw, Download,
 } from 'lucide-react';
 
 // ─── Voice pool ────────────────────────────────────────────────────────────
@@ -99,6 +99,7 @@ export default function ScriptPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioCacheRef = useRef<Map<string, string>>(new Map());
+  const blobCacheRef = useRef<Map<string, Blob>>(new Map());
   const audioUrlsRef = useRef<string[]>([]);
   const teleprompterRef = useRef<HTMLDivElement>(null);
   const scrollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -119,6 +120,8 @@ export default function ScriptPage() {
   const [wpm, setWpm] = useState(160); // teleprompter words per minute
   const [isScrolling, setIsScrolling] = useState(false);
   const [fileName, setFileName] = useState('');
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState({ current: 0, total: 0 });
 
   const currentLineIdxRef = useRef(0);
   const isPlayingRef = useRef(false);
@@ -159,6 +162,7 @@ export default function ScriptPage() {
     setFileName(name);
     setError(null);
     audioCacheRef.current.clear();
+    blobCacheRef.current.clear();
     audioUrlsRef.current.forEach(URL.revokeObjectURL);
     audioUrlsRef.current = [];
     if (audioRef.current) { audioRef.current.pause(); audioRef.current.onended = null; audioRef.current.src = ''; }
@@ -201,6 +205,50 @@ export default function ScriptPage() {
     setShowPaste(false);
   }, [pasteText, loadContent]);
 
+  // ── Download full audio ─────────────────────────────────────────────────
+  const downloadAudio = useCallback(async () => {
+    if (!lines.length || isDownloading) return;
+    const speakable = lines
+      .map((line, i) => ({ line, i }))
+      .filter(({ line }) => line.type !== 'character');
+    setIsDownloading(true);
+    setDownloadProgress({ current: 0, total: speakable.length });
+    try {
+      const blobs: Blob[] = [];
+      for (let j = 0; j < speakable.length; j++) {
+        const { line, i } = speakable[j];
+        const cacheKey = `${i}-${line.text}`;
+        let blob = blobCacheRef.current.get(cacheKey);
+        if (!blob) {
+          let voice = NARRATOR_VOICE;
+          if (line.type === 'dialogue' && line.character) voice = voiceMap[line.character] ?? NARRATOR_VOICE;
+          const res = await fetch('/api/reader-tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: line.text, voice, speed }),
+          });
+          if (res.ok) {
+            blob = await res.blob();
+            blobCacheRef.current.set(cacheKey, blob);
+          }
+        }
+        if (blob) blobs.push(blob);
+        setDownloadProgress({ current: j + 1, total: speakable.length });
+      }
+      if (!blobs.length) return;
+      const combined = new Blob(blobs, { type: 'audio/mpeg' });
+      const url = URL.createObjectURL(combined);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${(fileName.replace(/\.[^.]+$/, '') || 'script')}.mp3`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setIsDownloading(false);
+      setDownloadProgress({ current: 0, total: 0 });
+    }
+  }, [lines, voiceMap, speed, fileName, isDownloading]);
+
   // ── Multi-character TTS ─────────────────────────────────────────────────
   const fetchLineAudio = useCallback(async (idx: number): Promise<string | null> => {
     const line = lines[idx];
@@ -222,6 +270,7 @@ export default function ScriptPage() {
       });
       if (!res.ok) return null;
       const blob = await res.blob();
+      blobCacheRef.current.set(cacheKey, blob);
       const url = URL.createObjectURL(blob);
       audioUrlsRef.current.push(url);
       audioCacheRef.current.set(cacheKey, url);
@@ -381,6 +430,20 @@ export default function ScriptPage() {
           </button>
           <input ref={fileInputRef} type="file" accept=".pptx,.pdf,.docx,.txt,.fdx" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }} />
+
+          {hasContent && mode !== 'teleprompter' && (
+            <button
+              onClick={downloadAudio}
+              disabled={isDownloading}
+              title={isDownloading ? `Rendering… ${downloadProgress.current}/${downloadProgress.total}` : 'Download MP3'}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-accent/90 disabled:opacity-60 text-white text-sm rounded-lg font-medium transition-all"
+            >
+              {isDownloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+              <span className="hidden sm:inline">
+                {isDownloading ? `${downloadProgress.current}/${downloadProgress.total}` : 'MP3'}
+              </span>
+            </button>
+          )}
         </div>
       </header>
 

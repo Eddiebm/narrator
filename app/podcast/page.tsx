@@ -50,6 +50,7 @@ export default function PodcastPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioCacheRef = useRef<Map<number, string>>(new Map());
+  const blobCacheRef = useRef<Map<number, Blob>>(new Map());
   const audioUrlsRef = useRef<string[]>([]);
   const lineRefs = useRef<(HTMLDivElement | null)[]>([]);
 
@@ -64,6 +65,8 @@ export default function PodcastPage() {
   const [error, setError] = useState<string | null>(null);
   const [isParsing, setIsParsing] = useState(false);
   const [speed, setSpeed] = useState(1.0);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState({ current: 0, total: 0 });
 
   const currentIdxRef = useRef(0);
   useEffect(() => { currentIdxRef.current = currentIdx; }, [currentIdx]);
@@ -123,6 +126,7 @@ export default function PodcastPage() {
     setStep('generating');
     setError(null);
     audioCacheRef.current.clear();
+    blobCacheRef.current.clear();
     audioUrlsRef.current.forEach(URL.revokeObjectURL);
     audioUrlsRef.current = [];
 
@@ -156,6 +160,7 @@ export default function PodcastPage() {
       });
       if (!res.ok) return null;
       const blob = await res.blob();
+      blobCacheRef.current.set(idx, blob);
       const url = URL.createObjectURL(blob);
       audioUrlsRef.current.push(url);
       audioCacheRef.current.set(idx, url);
@@ -227,6 +232,45 @@ export default function PodcastPage() {
     a.href = url; a.download = `${deckName || 'podcast'}-transcript.txt`; a.click();
     URL.revokeObjectURL(url);
   }, [lines, deckName]);
+
+  const downloadAudio = useCallback(async () => {
+    if (!lines.length || isDownloading) return;
+    setIsDownloading(true);
+    setDownloadProgress({ current: 0, total: lines.length });
+    try {
+      const blobs: Blob[] = [];
+      for (let i = 0; i < lines.length; i++) {
+        let blob = blobCacheRef.current.get(i);
+        if (!blob) {
+          const line = lines[i];
+          const host = hosts.find(h => h.name === line.speaker);
+          const voice = host?.voice ?? VOICES[0].id;
+          const res = await fetch('/api/reader-tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: line.text, voice, speed }),
+          });
+          if (res.ok) {
+            blob = await res.blob();
+            blobCacheRef.current.set(i, blob);
+          }
+        }
+        if (blob) blobs.push(blob);
+        setDownloadProgress({ current: i + 1, total: lines.length });
+      }
+      if (!blobs.length) return;
+      const combined = new Blob(blobs, { type: 'audio/mpeg' });
+      const url = URL.createObjectURL(combined);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${(deckName || 'podcast')}-episode.mp3`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setIsDownloading(false);
+      setDownloadProgress({ current: 0, total: 0 });
+    }
+  }, [lines, hosts, speed, deckName, isDownloading]);
 
   const hostColour = (name: string) => {
     const idx = hosts.findIndex(h => h.name === name);
@@ -405,6 +449,17 @@ export default function PodcastPage() {
           >
             <Download className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Transcript</span>
+          </button>
+          <button
+            onClick={downloadAudio}
+            disabled={isDownloading}
+            title={isDownloading ? `Rendering… ${downloadProgress.current}/${downloadProgress.total}` : 'Download episode as MP3'}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-accent/90 disabled:opacity-60 text-white text-sm rounded-lg font-medium transition-all"
+          >
+            {isDownloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+            <span className="hidden sm:inline">
+              {isDownloading ? `${downloadProgress.current}/${downloadProgress.total}` : 'MP3'}
+            </span>
           </button>
         </div>
       </header>

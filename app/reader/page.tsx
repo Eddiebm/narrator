@@ -16,6 +16,7 @@ import {
   ClipboardPaste,
   Mic,
   MicOff,
+  Download,
 } from 'lucide-react';
 
 const VOICES = [
@@ -47,12 +48,15 @@ export default function ReaderPage() {
   const [error, setError] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [lastCommand, setLastCommand] = useState<string | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState({ current: 0, total: 0 });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
   const isPlayingRef = useRef(false);
   const currentIdxRef = useRef(0);
   // Cache generated audio blobs by paragraph index
   const audioCacheRef = useRef<Map<number, string>>(new Map());
+  const blobCacheRef = useRef<Map<number, Blob>>(new Map());
 
   // Keep refs in sync so speech handler can read current values without stale closures
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
@@ -95,6 +99,7 @@ export default function ReaderPage() {
       });
       if (!res.ok) throw new Error('TTS failed');
       const blob = await res.blob();
+      blobCacheRef.current.set(idx, blob);
       const url = URL.createObjectURL(blob);
       audioUrlsRef.current.push(url);
       audioCacheRef.current.set(idx, url);
@@ -168,6 +173,7 @@ export default function ReaderPage() {
       audioRef.current.src = '';
     }
     audioCacheRef.current.clear();
+    blobCacheRef.current.clear();
     audioUrlsRef.current.forEach(URL.revokeObjectURL);
     audioUrlsRef.current = [];
     setCurrentIdx(0);
@@ -176,6 +182,42 @@ export default function ReaderPage() {
     isPlayingRef.current = false;
     setError(null);
   }, []);
+
+  const downloadAudio = useCallback(async () => {
+    if (!paragraphs.length || isDownloading) return;
+    setIsDownloading(true);
+    setDownloadProgress({ current: 0, total: paragraphs.length });
+    try {
+      const blobs: Blob[] = [];
+      for (let i = 0; i < paragraphs.length; i++) {
+        let blob = blobCacheRef.current.get(i);
+        if (!blob) {
+          const res = await fetch('/api/reader-tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: paragraphs[i], voice, speed }),
+          });
+          if (res.ok) {
+            blob = await res.blob();
+            blobCacheRef.current.set(i, blob);
+          }
+        }
+        if (blob) blobs.push(blob);
+        setDownloadProgress({ current: i + 1, total: paragraphs.length });
+      }
+      if (!blobs.length) return;
+      const combined = new Blob(blobs, { type: 'audio/mpeg' });
+      const url = URL.createObjectURL(combined);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${(fileName.replace(/\.[^.]+$/, '') || 'reader')}.mp3`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setIsDownloading(false);
+      setDownloadProgress({ current: 0, total: 0 });
+    }
+  }, [paragraphs, voice, speed, fileName, isDownloading]);
 
   const handleFile = useCallback(async (file: File) => {
     resetAudio();
@@ -403,6 +445,20 @@ export default function ReaderPage() {
             <span className="hidden sm:inline">{hasDocs ? 'New file' : 'Upload'}</span>
           </button>
           <input ref={fileInputRef} type="file" accept=".pptx,.pdf,.docx" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }} />
+
+          {hasDocs && (
+            <button
+              onClick={downloadAudio}
+              disabled={isDownloading}
+              title={isDownloading ? `Rendering… ${downloadProgress.current}/${downloadProgress.total}` : 'Download MP3'}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-accent/90 disabled:opacity-60 text-white text-sm rounded-lg font-medium transition-all"
+            >
+              {isDownloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+              <span className="hidden sm:inline">
+                {isDownloading ? `${downloadProgress.current}/${downloadProgress.total}` : 'MP3'}
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Progress bar */}
