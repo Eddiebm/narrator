@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Mic2, Upload, FileText, Sparkles, CheckCircle2, Loader2, BookOpen, Info } from 'lucide-react';
+import { Mic2, Upload, FileText, Sparkles, CheckCircle2, Loader2, BookOpen, Info, Clock, Trash2 } from 'lucide-react';
 import type { ParsedSlide, PresentationStyle, NarratorSession } from '@/lib/types';
 import { STYLES } from '@/lib/types';
-import { savePptx } from '@/lib/idb';
+import { savePptx, saveSession, listSessions, deleteSession, loadSession } from '@/lib/idb';
+import type { SavedSession } from '@/lib/idb';
 
 type Step = 'idle' | 'parsing' | 'generating' | 'done';
 
@@ -18,6 +19,11 @@ export default function UploadPage() {
   const [style, setStyle] = useState<PresentationStyle>('professional');
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [error, setError] = useState<string | null>(null);
+  const [savedSessions, setSavedSessions] = useState<SavedSession[]>([]);
+
+  useEffect(() => {
+    listSessions().then(setSavedSessions).catch(() => {});
+  }, []);
 
   const processFile = useCallback(
     async (file: File) => {
@@ -84,6 +90,7 @@ export default function UploadPage() {
         createdAt: Date.now(),
       };
       localStorage.setItem('narrator-session', JSON.stringify(session));
+      saveSession(session).then(() => listSessions().then(setSavedSessions)).catch(() => {});
 
       setStep('done');
       setTimeout(() => router.push('/editor'), 600);
@@ -250,6 +257,54 @@ export default function UploadPage() {
               </table>
             </div>
           </details>
+        </div>
+      )}
+
+      {/* Recent presentations */}
+      {!isProcessing && savedSessions.length > 0 && (
+        <div className="w-full max-w-lg mt-8">
+          <h2 className="text-xs font-medium text-ink-muted uppercase tracking-wider mb-3 flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5" />
+            Recent presentations
+          </h2>
+          <div className="bg-surface-card border border-surface-border rounded-xl overflow-hidden">
+            {savedSessions.map((s, i) => (
+              <div
+                key={s.id}
+                className={`flex items-center gap-3 px-4 py-3 hover:bg-surface-hover transition-colors cursor-pointer ${
+                  i < savedSessions.length - 1 ? 'border-b border-surface-border' : ''
+                }`}
+                onClick={async () => {
+                  const record = await loadSession(s.id);
+                  if (!record) return;
+                  localStorage.setItem('narrator-session', JSON.stringify(record.session));
+                  router.push('/editor');
+                }}
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-ink font-medium truncate">{s.name}</p>
+                  <p className="text-xs text-ink-dim capitalize">{s.style}</p>
+                </div>
+                <span className="text-xs text-ink-dim whitespace-nowrap">
+                  {new Date(s.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                </span>
+                <span className="text-xs text-ink-dim whitespace-nowrap w-16 text-right">
+                  {s.slideCount} slides
+                </span>
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    await deleteSession(s.id);
+                    setSavedSessions((prev) => prev.filter((x) => x.id !== s.id));
+                  }}
+                  className="p-1.5 rounded-md text-ink-dim hover:text-red-400 hover:bg-red-950/30 transition-colors flex-shrink-0"
+                  aria-label="Delete session"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </main>

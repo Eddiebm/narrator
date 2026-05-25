@@ -95,6 +95,30 @@ export default function EditorPage() {
     [slides, updateSlide]
   );
 
+  const translateSlide = useCallback(
+    async (index: number, targetLanguage: string) => {
+      const slide = slides[index];
+      updateSlide(index, { isGeneratingScript: true, error: null });
+      try {
+        const res = await fetch('/api/translate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: slide.script, targetLanguage }),
+        });
+        const data = await res.json() as { translated?: string; error?: string };
+        if (!res.ok || !data.translated) {
+          updateSlide(index, { isGeneratingScript: false, error: 'Translation failed' });
+          return;
+        }
+        updateSlide(index, { script: data.translated, isGeneratingScript: false });
+        persistScripts(index, data.translated);
+      } catch {
+        updateSlide(index, { isGeneratingScript: false, error: 'Translation failed' });
+      }
+    },
+    [slides, updateSlide]
+  );
+
   const generateAudio = useCallback(
     async (index: number) => {
       const slide = slides[index];
@@ -260,15 +284,15 @@ export default function EditorPage() {
     <div className="min-h-screen flex flex-col">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-surface/90 backdrop-blur border-b border-surface-border">
-        <div className="max-w-4xl mx-auto px-4 h-14 flex items-center gap-4">
+        <div className="max-w-4xl mx-auto px-2 sm:px-4 h-14 flex items-center gap-2 sm:gap-4 overflow-x-auto scrollbar-none">
           <button
             onClick={() => router.push('/')}
-            className="text-ink-muted hover:text-ink transition-colors"
+            className="text-ink-muted hover:text-ink transition-colors flex-shrink-0"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
 
-          <div className="flex items-center gap-1.5 mr-auto">
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             <Mic2 className="w-4 h-4 text-accent-light" />
             <span className="font-medium text-sm truncate max-w-[200px]">{presentationName}</span>
             <span className="text-ink-muted text-xs ml-1">
@@ -416,6 +440,7 @@ export default function EditorPage() {
             onGenerateAudio={() => generateAudio(i)}
             onVoiceChange={(voice) => updateSlide(i, { voice })}
             onSpeedChange={(speed) => updateSlide(i, { speed })}
+            onTranslate={(lang) => translateSlide(i, lang)}
           />
         ))}
 

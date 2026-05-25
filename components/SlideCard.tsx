@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import SlidePreview from './SlidePreview';
 import {
   Play,
   Pause,
@@ -10,6 +11,7 @@ import {
   ChevronDown,
   AlertCircle,
   Mic,
+  Languages,
 } from 'lucide-react';
 import type { SlideData, Voice } from '@/lib/types';
 import { VOICES } from '@/lib/types';
@@ -23,6 +25,7 @@ interface Props {
   onGenerateAudio: () => Promise<void>;
   onVoiceChange: (voice: Voice) => void;
   onSpeedChange: (speed: number) => void;
+  onTranslate: (lang: string) => void;
 }
 
 function wordCount(text: string) {
@@ -34,6 +37,10 @@ function estimatedSeconds(text: string, speed: number) {
   return Math.round((wordCount(text) / 150) * 60 * (1 / speed));
 }
 
+const TRANSLATE_LANGUAGES = [
+  'Spanish', 'French', 'German', 'Portuguese', 'Arabic', 'Mandarin', 'Yoruba', 'Swahili',
+];
+
 export default function SlideCard({
   slide,
   globalVoice,
@@ -43,10 +50,12 @@ export default function SlideCard({
   onGenerateAudio,
   onVoiceChange,
   onSpeedChange,
+  onTranslate,
 }: Props) {
   const [refineInput, setRefineInput] = useState('');
   const [showRefine, setShowRefine] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [translateLang, setTranslateLang] = useState('Spanish');
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const voice = slide.voice || globalVoice;
@@ -96,8 +105,14 @@ export default function SlideCard({
         )}
       </div>
 
-      {/* Script editor */}
-      <div className="px-4 pt-3 pb-2">
+      {/* Script editor + slide preview */}
+      <div className="flex gap-3 px-4 pt-3 pb-2">
+        {/* Mini slide thumbnail — hidden on small screens */}
+        <div className="hidden md:block flex-shrink-0 w-44">
+          <SlidePreview title={slide.title} body={slide.body} index={slide.index} />
+        </div>
+
+        <div className="flex-1 flex flex-col">
         <textarea
           value={slide.script}
           onChange={(e) => onScriptChange(e.target.value)}
@@ -109,15 +124,42 @@ export default function SlideCard({
           <span className="text-xs text-ink-dim">
             {words} words · ~{secs}s
           </span>
-          <button
-            onClick={() => setShowRefine((v) => !v)}
-            className="text-xs text-ink-muted hover:text-accent-light transition-colors flex items-center gap-1"
-          >
-            <Wand2 className="w-3 h-3" />
-            Refine
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
+              <select
+                value={translateLang}
+                onChange={(e) => setTranslateLang(e.target.value)}
+                disabled={slide.isGeneratingScript || !slide.script.trim()}
+                className="appearance-none bg-surface border border-surface-border text-xs text-ink rounded-lg pl-2 pr-5 py-1 focus:outline-none focus:border-accent cursor-pointer disabled:opacity-40"
+              >
+                {TRANSLATE_LANGUAGES.map((lang) => (
+                  <option key={lang} value={lang}>{lang}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => onTranslate(translateLang)}
+                disabled={slide.isGeneratingScript || !slide.script.trim()}
+                className="text-xs text-ink-muted hover:text-accent-light transition-colors flex items-center gap-1 disabled:opacity-40"
+              >
+                {slide.isGeneratingScript ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Languages className="w-3 h-3" />
+                )}
+                Translate
+              </button>
+            </div>
+            <button
+              onClick={() => setShowRefine((v) => !v)}
+              className="text-xs text-ink-muted hover:text-accent-light transition-colors flex items-center gap-1"
+            >
+              <Wand2 className="w-3 h-3" />
+              Refine
+            </button>
+          </div>
         </div>
-      </div>
+        </div>{/* end flex-1 */}
+      </div>{/* end two-col */}
 
       {/* Refine input */}
       {showRefine && (

@@ -20,7 +20,7 @@ export default function GlobalNav() {
 
   return (
     <nav className="sticky top-0 z-20 bg-surface/90 backdrop-blur border-b border-surface-border">
-      <div className="max-w-4xl mx-auto px-4 h-12 flex items-center gap-1">
+      <div className="max-w-4xl mx-auto px-4 h-12 flex items-center gap-1 overflow-x-auto scrollbar-none">
         {LINKS.map(({ href, label, icon: Icon }) => {
           const active = href === '/' ? path === '/' : path.startsWith(href);
           return (

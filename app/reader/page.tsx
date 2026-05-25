@@ -18,6 +18,7 @@ import {
   MicOff,
   Download,
   Share2,
+  Languages,
 } from 'lucide-react';
 
 const VOICES = [
@@ -54,6 +55,8 @@ export default function ReaderPage() {
   const [isSharing, setIsSharing] = useState(false);
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [showCopied, setShowCopied] = useState(false);
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [translateLang, setTranslateLang] = useState('Spanish');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
   const isPlayingRef = useRef(false);
@@ -403,6 +406,33 @@ export default function ReaderPage() {
     }
   }, [paragraphs, voice, speed, fileName, isSharing]);
 
+  const TRANSLATE_LANGUAGES = [
+    'Spanish', 'French', 'German', 'Portuguese', 'Arabic', 'Mandarin', 'Yoruba', 'Swahili',
+  ];
+
+  const translateAll = useCallback(async () => {
+    if (!paragraphs.length || isTranslating) return;
+    setIsTranslating(true);
+    const translated: string[] = [];
+    for (const para of paragraphs) {
+      try {
+        const res = await fetch('/api/translate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: para, targetLanguage: translateLang }),
+        });
+        const data = await res.json() as { translated?: string };
+        translated.push(data.translated ?? para);
+      } catch {
+        translated.push(para);
+      }
+      setParagraphs([...translated, ...paragraphs.slice(translated.length)]);
+    }
+    setParagraphs(translated);
+    resetAudio();
+    setIsTranslating(false);
+  }, [paragraphs, translateLang, isTranslating, resetAudio]);
+
   const hasDocs = paragraphs.length > 0;
   const progress = hasDocs ? Math.round(((currentIdx + 1) / paragraphs.length) * 100) : 0;
 
@@ -412,11 +442,11 @@ export default function ReaderPage() {
 
       {/* Header */}
       <header className="sticky top-0 z-10 bg-surface/90 backdrop-blur border-b border-surface-border">
-        <div className="max-w-3xl mx-auto px-4 h-14 flex items-center gap-4">
-          <button onClick={() => router.push('/')} className="text-ink-muted hover:text-ink transition-colors">
+        <div className="max-w-3xl mx-auto px-2 sm:px-4 h-14 flex items-center gap-2 sm:gap-4 overflow-x-auto scrollbar-none">
+          <button onClick={() => router.push('/')} className="text-ink-muted hover:text-ink transition-colors flex-shrink-0">
             <ArrowLeft className="w-4 h-4" />
           </button>
-          <div className="flex items-center gap-1.5 mr-auto">
+          <div className="flex items-center gap-1.5 flex-shrink-0 max-w-[120px] sm:max-w-[200px] mr-auto">
             <BookOpen className="w-4 h-4 text-accent-light" />
             <span className="font-medium text-sm truncate max-w-[200px]">
               {fileName || 'Document Reader'}
@@ -504,6 +534,33 @@ export default function ReaderPage() {
                   Copied!
                 </span>
               )}
+            </div>
+          )}
+
+          {hasDocs && (
+            <div className="flex items-center gap-1">
+              <div className="relative">
+                <select
+                  value={translateLang}
+                  onChange={(e) => setTranslateLang(e.target.value)}
+                  disabled={isTranslating}
+                  className="appearance-none bg-surface-card border border-surface-border text-sm text-ink rounded-lg pl-3 pr-7 py-1.5 focus:outline-none focus:border-accent cursor-pointer disabled:opacity-50"
+                >
+                  {TRANSLATE_LANGUAGES.map((lang) => (
+                    <option key={lang} value={lang}>{lang}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-ink-muted pointer-events-none" />
+              </div>
+              <button
+                onClick={translateAll}
+                disabled={isTranslating}
+                title="Translate all paragraphs"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-card border border-surface-border hover:border-accent disabled:opacity-60 text-sm rounded-lg font-medium transition-all"
+              >
+                {isTranslating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Languages className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline">{isTranslating ? 'Translating…' : 'Translate'}</span>
+              </button>
             </div>
           )}
         </div>
@@ -627,52 +684,52 @@ export default function ReaderPage() {
             </div>
           )}
 
-          <div className="max-w-3xl mx-auto px-4 py-4 flex items-center gap-4">
+          <div className="max-w-3xl mx-auto px-4 py-3 sm:py-4 flex items-center gap-4">
             <span className="text-xs text-ink-muted w-20 text-right hidden sm:block">
               {currentIdx + 1} / {paragraphs.length}
             </span>
 
-            <div className="flex items-center gap-3 mx-auto">
+            <div className="flex items-center gap-4 sm:gap-3 mx-auto">
               <button
                 onClick={skipBack}
                 disabled={currentIdx === 0}
-                className="w-10 h-10 rounded-full bg-surface-card border border-surface-border hover:border-accent disabled:opacity-30 flex items-center justify-center transition-all"
+                className="w-12 h-12 sm:w-10 sm:h-10 rounded-full bg-surface-card border border-surface-border hover:border-accent disabled:opacity-30 flex items-center justify-center transition-all"
               >
-                <SkipBack className="w-4 h-4" />
+                <SkipBack className="w-5 h-5 sm:w-4 sm:h-4" />
               </button>
 
               <button
                 onClick={togglePlay}
                 disabled={isLoading}
-                className="w-14 h-14 rounded-full bg-accent hover:bg-accent/90 disabled:opacity-50 flex items-center justify-center transition-all shadow-lg"
+                className="w-16 h-16 sm:w-14 sm:h-14 rounded-full bg-accent hover:bg-accent/90 disabled:opacity-50 flex items-center justify-center transition-all shadow-lg"
               >
                 {isLoading ? (
-                  <Loader2 className="w-6 h-6 text-white animate-spin" />
+                  <Loader2 className="w-7 h-7 sm:w-6 sm:h-6 text-white animate-spin" />
                 ) : isPlaying ? (
-                  <Pause className="w-6 h-6 text-white" />
+                  <Pause className="w-7 h-7 sm:w-6 sm:h-6 text-white" />
                 ) : (
-                  <Play className="w-6 h-6 text-white ml-0.5" />
+                  <Play className="w-7 h-7 sm:w-6 sm:h-6 text-white ml-0.5" />
                 )}
               </button>
 
               <button
                 onClick={skipForward}
                 disabled={currentIdx >= paragraphs.length - 1}
-                className="w-10 h-10 rounded-full bg-surface-card border border-surface-border hover:border-accent disabled:opacity-30 flex items-center justify-center transition-all"
+                className="w-12 h-12 sm:w-10 sm:h-10 rounded-full bg-surface-card border border-surface-border hover:border-accent disabled:opacity-30 flex items-center justify-center transition-all"
               >
-                <SkipForward className="w-4 h-4" />
+                <SkipForward className="w-5 h-5 sm:w-4 sm:h-4" />
               </button>
 
               <button
                 onClick={toggleListening}
                 title={isListening ? 'Stop voice commands' : 'Start voice commands'}
-                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all border ${
+                className={`w-12 h-12 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-all border ${
                   isListening
                     ? 'bg-red-500/20 border-red-500/60 text-red-400 animate-pulse'
                     : 'bg-surface-card border-surface-border hover:border-accent'
                 }`}
               >
-                {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                {isListening ? <MicOff className="w-5 h-5 sm:w-4 sm:h-4" /> : <Mic className="w-5 h-5 sm:w-4 sm:h-4" />}
               </button>
             </div>
 
