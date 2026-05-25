@@ -4,10 +4,10 @@
  */
 export const MODELS = {
   /**
-   * Script generation: creative, needs quality narrative voice.
-   * Sonnet 4.5 — strong creative writing, good instruction-following.
+   * Script generation: Gemini Flash 2.0 — fast enough to stay inside Vercel edge's 30s
+   * hard limit, and produces quality narration. Sonnet was timing out (20-25s per slide).
    */
-  scriptGeneration: 'anthropic/claude-sonnet-4.5',
+  scriptGeneration: 'google/gemini-2.0-flash-001',
 
   /**
    * Script refinement: editing an existing script with a plain-English instruction.
