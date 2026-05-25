@@ -28,8 +28,7 @@ function wrapText(
 
   for (let i = 0; i < words.length; i++) {
     const testLine = line + (line ? ' ' : '') + words[i];
-    const metrics = ctx.measureText(testLine);
-    if (metrics.width > maxWidth && line) {
+    if (ctx.measureText(testLine).width > maxWidth && line) {
       ctx.fillText(line, x, currentY);
       line = words[i];
       currentY += lineHeight;
@@ -37,10 +36,7 @@ function wrapText(
       line = testLine;
     }
   }
-  if (line) {
-    ctx.fillText(line, x, currentY);
-    currentY += lineHeight;
-  }
+  if (line) { ctx.fillText(line, x, currentY); currentY += lineHeight; }
   return currentY;
 }
 
@@ -50,15 +46,12 @@ function drawSlide(
   slideNumber: number,
   totalSlides: number
 ): void {
-  // Background
   ctx.fillStyle = BG_COLOR;
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-  // Accent top bar
   ctx.fillStyle = ACCENT_COLOR;
   ctx.fillRect(0, 0, CANVAS_WIDTH, 6);
 
-  // Slide number (top-right)
   ctx.font = '500 20px system-ui, -apple-system, sans-serif';
   ctx.fillStyle = SLIDE_NUM_COLOR;
   ctx.textAlign = 'right';
@@ -68,21 +61,15 @@ function drawSlide(
   const paddingX = 80;
   const contentWidth = CANVAS_WIDTH - paddingX * 2;
 
-  // Title
   ctx.font = 'bold 48px system-ui, -apple-system, sans-serif';
   ctx.fillStyle = TITLE_COLOR;
   const titleY = wrapText(ctx, slide.title, paddingX, 160, contentWidth, 64);
 
-  // Body lines
   ctx.font = '400 24px system-ui, -apple-system, sans-serif';
   ctx.fillStyle = BODY_COLOR;
   let bodyY = titleY + 32;
   for (const line of slide.body) {
-    if (!line.trim()) {
-      bodyY += 16;
-      continue;
-    }
-    // Bullet
+    if (!line.trim()) { bodyY += 16; continue; }
     ctx.fillText('·', paddingX, bodyY);
     bodyY = wrapText(ctx, line, paddingX + 24, bodyY, contentWidth - 24, 36);
     bodyY += 8;
@@ -91,6 +78,7 @@ function drawSlide(
 }
 
 function getSupportedMimeType(): string {
+  if (typeof MediaRecorder === 'undefined') throw new Error('MediaRecorder is not supported in this browser.');
   const candidates = [
     'video/mp4;codecs=avc1,mp4a.40.2',
     'video/mp4',
@@ -108,79 +96,76 @@ function getFileExtension(mimeType: string): string {
   return mimeType.startsWith('video/mp4') ? 'mp4' : 'webm';
 }
 
+async function playAudioThrough(
+  blob: Blob,
+  audioCtx: AudioContext,
+  dest: MediaStreamAudioDestinationNode
+): Promise<void> {
+  try {
+    const buf = await audioCtx.decodeAudioData(await blob.arrayBuffer());
+    await new Promise<void>((resolve) => {
+      const src = audioCtx.createBufferSource();
+      src.buffer = buf;
+      src.connect(dest);
+      src.onended = () => resolve();
+      src.start();
+    });
+  } catch {
+    // If decode fails (format edge-case), hold the slide for estimated read time
+    const estimatedMs = Math.max(3000, blob.size / 16);
+    await new Promise<void>((r) => setTimeout(r, estimatedMs));
+  }
+}
+
 export async function exportVideo(
   slides: VideoSlide[],
   title: string,
   onProgress?: (current: number, total: number) => void
 ): Promise<void> {
-  // Create offscreen canvas
   const canvas = document.createElement('canvas');
   canvas.width = CANVAS_WIDTH;
   canvas.height = CANVAS_HEIGHT;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Could not get 2D context from canvas');
 
-  // Set up video stream from canvas
   const videoStream = canvas.captureStream(FPS);
-  const videoTrack = videoStream.getVideoTracks()[0];
 
-  // Set up audio context and destination
   const audioCtx = new AudioContext();
+  // Resume in case browser suspended before first user-gesture check
+  if (audioCtx.state === 'suspended') await audioCtx.resume();
+
   const audioDest = audioCtx.createMediaStreamDestination();
   const audioTrack = audioDest.stream.getAudioTracks()[0];
 
-  // Combined stream
-  const tracks: MediaStreamTrack[] = [videoTrack];
+  const tracks: MediaStreamTrack[] = [videoStream.getVideoTracks()[0]];
   if (audioTrack) tracks.push(audioTrack);
   const combinedStream = new MediaStream(tracks);
 
   const mimeType = getSupportedMimeType();
   const recorder = new MediaRecorder(combinedStream, { mimeType });
   const chunks: Blob[] = [];
-
-  recorder.ondataavailable = (e) => {
-    if (e.data.size > 0) chunks.push(e.data);
-  };
-
-  recorder.start(100); // collect in 100ms chunks
+  recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+  recorder.start(100);
 
   const total = slides.length;
-
   for (let i = 0; i < total; i++) {
     const slide = slides[i];
     onProgress?.(i + 1, total);
-
-    // Draw the slide frame
     drawSlide(ctx, slide, i + 1, total);
 
     if (slide.audioBlob) {
-      // Decode and play audio through AudioContext
-      const arrayBuffer = await slide.audioBlob.arrayBuffer();
-      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-
-      await new Promise<void>((resolve) => {
-        const source = audioCtx.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(audioDest);
-        source.onended = () => resolve();
-        source.start();
-      });
+      await playAudioThrough(slide.audioBlob, audioCtx, audioDest);
     } else {
-      // No audio — hold the slide for 3 seconds
-      await new Promise<void>((resolve) => setTimeout(resolve, 3000));
+      await new Promise<void>((r) => setTimeout(r, 3000));
     }
   }
 
-  // Stop recording
   await new Promise<void>((resolve) => {
     recorder.onstop = () => resolve();
     recorder.stop();
   });
-
-  // Close audio context
   await audioCtx.close();
 
-  // Build and download the file
   const ext = getFileExtension(mimeType);
   const safeName = title.slice(0, 60).replace(/[^a-z0-9]/gi, '-').toLowerCase();
   const blob = new Blob(chunks, { type: mimeType });

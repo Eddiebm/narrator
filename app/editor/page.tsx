@@ -31,6 +31,7 @@ export default function EditorPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingVideo, setIsExportingVideo] = useState(false);
   const [videoProgress, setVideoProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
+  const [exportError, setExportError] = useState<string | null>(null);
   const audioUrlsRef = useRef<string[]>([]);
 
   useEffect(() => {
@@ -82,6 +83,7 @@ export default function EditorPage() {
             slideTitle: slide.title,
           }),
         });
+        if (!res.ok) throw new Error('Refinement failed');
         const { script } = await res.json();
         updateSlide(index, { script, isGeneratingScript: false });
         persistScripts(index, script);
@@ -207,12 +209,12 @@ export default function EditorPage() {
       });
       if (!file) return;
       pptxBuffer = await file.arrayBuffer();
-      loadPptx; // re-use same key
       const { savePptx } = await import('@/lib/idb');
       await savePptx(pptxBuffer);
     }
 
     setIsExporting(true);
+    setExportError(null);
     try {
       const { embedAudioInPptx } = await import('@/lib/pptx-audio');
       const { blob, embedded, total } = await embedAudioInPptx(
@@ -220,7 +222,7 @@ export default function EditorPage() {
         slides.map((s) => s.audioBlob)
       );
       if (embedded === 0) {
-        alert(`No audio was embedded (found ${total} slides). Generate audio first, then export.`);
+        setExportError(`No audio embedded (${total} slides found). Generate audio first.`);
         return;
       }
       const url = URL.createObjectURL(blob);
@@ -230,7 +232,7 @@ export default function EditorPage() {
       a.click();
       URL.revokeObjectURL(url);
       if (embedded < total) {
-        alert(`Downloaded with ${embedded}/${total} slides narrated. Generate audio for the remaining slides and export again.`);
+        setExportError(`Downloaded with ${embedded}/${total} slides narrated. Generate remaining audio and export again.`);
       }
     } finally {
       setIsExporting(false);
@@ -240,6 +242,7 @@ export default function EditorPage() {
   const exportVideo = useCallback(async () => {
     const { exportVideo: runExport } = await import('@/lib/video-export');
     setIsExportingVideo(true);
+    setExportError(null);
     setVideoProgress({ current: 0, total: slides.length });
     try {
       await runExport(
@@ -247,6 +250,8 @@ export default function EditorPage() {
         presentationName,
         (current, total) => setVideoProgress({ current, total })
       );
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Video export failed.');
     } finally {
       setIsExportingVideo(false);
       setVideoProgress({ current: 0, total: 0 });
@@ -282,11 +287,12 @@ export default function EditorPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Header */}
+      {/* Header — row 1: title + voice controls + generate */}
       <header className="sticky top-0 z-10 bg-surface/90 backdrop-blur border-b border-surface-border">
-        <div className="max-w-4xl mx-auto px-2 sm:px-4 h-14 flex items-center gap-2 sm:gap-4 overflow-x-auto scrollbar-none">
+        <div className="max-w-4xl mx-auto px-2 sm:px-4 h-14 flex items-center gap-2 sm:gap-3 overflow-x-auto scrollbar-none">
           <button
             onClick={() => router.push('/')}
+            aria-label="Go back"
             className="text-ink-muted hover:text-ink transition-colors flex-shrink-0"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -294,15 +300,11 @@ export default function EditorPage() {
 
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <Mic2 className="w-4 h-4 text-accent-light" />
-            <span className="font-medium text-sm truncate max-w-[200px]">{presentationName}</span>
-            <span className="text-ink-muted text-xs ml-1">
-              {slides.length} slides
-            </span>
+            <span className="font-medium text-sm truncate max-w-[160px]">{presentationName}</span>
+            <span className="text-ink-muted text-xs ml-1">{slides.length} slides</span>
           </div>
 
-          {/* Global voice */}
           <div className="flex items-center gap-2">
-            <span className="text-xs text-ink-muted hidden sm:block">Voice</span>
             <div className="relative">
               <select
                 value={globalVoice}
@@ -310,15 +312,11 @@ export default function EditorPage() {
                 className="appearance-none bg-surface-card border border-surface-border text-sm text-ink rounded-lg pl-3 pr-7 py-1.5 focus:outline-none focus:border-accent cursor-pointer"
               >
                 {VOICES.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.name} · {v.region}
-                  </option>
+                  <option key={v.id} value={v.id}>{v.name} · {v.region}</option>
                 ))}
               </select>
               <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-ink-muted pointer-events-none" />
             </div>
-
-            {/* Speed */}
             <div className="relative hidden sm:block">
               <select
                 value={globalSpeed}
@@ -326,106 +324,85 @@ export default function EditorPage() {
                 className="appearance-none bg-surface-card border border-surface-border text-sm text-ink rounded-lg pl-3 pr-7 py-1.5 focus:outline-none focus:border-accent cursor-pointer"
               >
                 {[0.75, 0.9, 1.0, 1.1, 1.25].map((s) => (
-                  <option key={s} value={s}>
-                    {s}×
-                  </option>
+                  <option key={s} value={s}>{s}×</option>
                 ))}
               </select>
               <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-ink-muted pointer-events-none" />
             </div>
           </div>
 
-          {/* Actions */}
           <button
             onClick={generateAllAudio}
             disabled={isGeneratingAll}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-accent/90 disabled:opacity-50 text-white text-sm rounded-lg font-medium transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-accent/90 disabled:opacity-50 text-white text-sm rounded-lg font-medium transition-all flex-shrink-0"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isGeneratingAll ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">
-              {isGeneratingAll ? 'Generating…' : 'Generate All'}
-            </span>
+            <span>{isGeneratingAll ? `${generatedCount}/${slides.length}…` : 'Generate All'}</span>
           </button>
 
+          {/* Per-slide ZIP (secondary) */}
           <button
             onClick={downloadZip}
             disabled={generatedCount === 0 || isZipping}
-            title={
-              generatedCount === 0
-                ? 'Generate audio first'
-                : `Download ${generatedCount} MP3s as ZIP`
-            }
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-card border border-surface-border hover:border-accent disabled:opacity-40 text-sm rounded-lg font-medium transition-all"
+            title={generatedCount === 0 ? 'Generate audio first' : `Download ${generatedCount} individual MP3s as ZIP`}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-card border border-surface-border hover:border-accent disabled:opacity-40 text-sm rounded-lg font-medium transition-all flex-shrink-0"
           >
-            {isZipping ? (
-              <Package className="w-3.5 h-3.5 animate-pulse" />
-            ) : (
-              <Download className="w-3.5 h-3.5" />
-            )}
-            <span className="hidden sm:inline">
-              {isZipping ? 'Zipping…' : generatedCount > 0 ? `MP3s (${generatedCount})` : 'MP3s'}
-            </span>
+            {isZipping ? <Package className="w-3.5 h-3.5 animate-pulse" /> : <Download className="w-3.5 h-3.5" />}
+            <span className="hidden sm:inline">{isZipping ? 'Zipping…' : 'Per-slide ZIP'}</span>
           </button>
+        </div>
+
+        {/* Row 2: combined exports — always visible, visually distinct */}
+        <div className="max-w-4xl mx-auto px-2 sm:px-4 py-2 flex items-center gap-2 border-t border-surface-border/50 overflow-x-auto scrollbar-none">
+          <span className="text-xs text-ink-muted flex-shrink-0 hidden sm:block">Export full presentation:</span>
 
           <button
             onClick={downloadFullAudio}
             disabled={generatedCount === 0}
-            title={
-              generatedCount === 0
-                ? 'Generate audio first'
-                : `Download all ${generatedCount} slides as one MP3`
-            }
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-card border border-surface-border hover:border-accent disabled:opacity-40 text-sm rounded-lg font-medium transition-all"
+            title={generatedCount === 0 ? 'Generate audio first' : `Download all ${generatedCount} slides as one MP3`}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-hover border border-accent/40 hover:border-accent disabled:opacity-40 disabled:border-surface-border text-sm rounded-lg font-medium transition-all flex-shrink-0"
           >
-            <Music2 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">
-              {generatedCount > 0 ? `Full MP3 (${generatedCount})` : 'Full MP3'}
-            </span>
+            <Music2 className="w-3.5 h-3.5 text-accent-light" />
+            <span>MP3 {generatedCount > 0 ? `(${generatedCount} slides)` : ''}</span>
           </button>
 
           <button
             onClick={exportPptx}
             disabled={generatedCount === 0 || isExporting}
-            title={
-              generatedCount === 0
-                ? 'Generate audio first'
-                : `Embed ${generatedCount} narration${generatedCount !== 1 ? 's' : ''} into PPTX`
-            }
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-card border border-surface-border hover:border-accent disabled:opacity-40 text-sm rounded-lg font-medium transition-all"
+            title={generatedCount === 0 ? 'Generate audio first' : `Embed ${generatedCount} narrations into PPTX`}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-hover border border-accent/40 hover:border-accent disabled:opacity-40 disabled:border-surface-border text-sm rounded-lg font-medium transition-all flex-shrink-0"
           >
-            {isExporting ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <FileDown className="w-3.5 h-3.5" />
-            )}
-            <span className="hidden sm:inline">
-              {isExporting ? 'Exporting…' : generatedCount > 0 ? `PPTX (${generatedCount})` : 'PPTX'}
-            </span>
+            {isExporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5 text-accent-light" />}
+            <span>{isExporting ? 'Embedding…' : `PPTX ${generatedCount > 0 ? `(${generatedCount} slides)` : ''}`}</span>
           </button>
 
           <button
             onClick={exportVideo}
             disabled={generatedCount === 0 || isExportingVideo}
-            title={
-              generatedCount === 0
-                ? 'Generate audio first'
-                : `Render narrated video (${generatedCount} slides with audio)`
-            }
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-card border border-surface-border hover:border-accent disabled:opacity-40 text-sm rounded-lg font-medium transition-all"
+            title={generatedCount === 0 ? 'Generate audio first' : `Render all ${generatedCount} slides as one narrated MP4`}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-hover border border-accent/40 hover:border-accent disabled:opacity-40 disabled:border-surface-border text-sm rounded-lg font-medium transition-all flex-shrink-0"
           >
-            {isExportingVideo ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Video className="w-3.5 h-3.5" />
-            )}
-            <span className="hidden sm:inline">
+            {isExportingVideo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Video className="w-3.5 h-3.5 text-accent-light" />}
+            <span>
               {isExportingVideo && videoProgress.total > 0
-                ? `${videoProgress.current}/${videoProgress.total}`
-                : 'Video'}
+                ? `Rendering ${videoProgress.current}/${videoProgress.total}…`
+                : `MP4 ${generatedCount > 0 ? `(${generatedCount} slides)` : ''}`}
             </span>
           </button>
+
+          {generatedCount === 0 && (
+            <span className="text-xs text-ink-muted italic">— generate audio above first</span>
+          )}
         </div>
       </header>
+
+      {/* Export error banner */}
+      {exportError && (
+        <div className="bg-red-500/10 border-b border-red-500/30 px-4 py-2 text-sm text-red-400 flex items-center justify-between">
+          <span>{exportError}</span>
+          <button onClick={() => setExportError(null)} aria-label="Dismiss error" className="ml-4 text-red-400 hover:text-red-300 transition-colors">✕</button>
+        </div>
+      )}
 
       {/* Slide list */}
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-8 flex flex-col gap-4">
