@@ -28,19 +28,13 @@ async function generateScript(slide: ParsedSlide, style: PresentationStyle, apiK
 
   if (!content.trim()) return '';
 
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: MODELS.scriptGeneration,
-      max_tokens: 500,
-      messages: [
-        {
-          role: 'user',
-          content: `You are a world-class presentation narrator. Write a spoken voiceover for this slide (30–60 seconds when read aloud).
+  const body = JSON.stringify({
+    model: MODELS.scriptGeneration,
+    max_tokens: 500,
+    messages: [
+      {
+        role: 'user',
+        content: `You are a world-class presentation narrator. Write a spoken voiceover for this slide (30–60 seconds when read aloud).
 
 Style: ${STYLE_PROMPTS[style]}
 
@@ -54,18 +48,35 @@ Slide content:
 ${content}
 
 Return only the narration text. No labels, no quotes.`,
-        },
-      ],
-    }),
+      },
+    ],
   });
 
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`OpenRouter ${res.status}: ${body}`);
+  // Retry up to 3 times on 429 rate-limit responses with exponential backoff
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body,
+    });
+
+    if (res.status === 429) {
+      const retryAfter = res.headers.get('retry-after');
+      const waitMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : (attempt + 1) * 3000;
+      await new Promise((r) => setTimeout(r, waitMs));
+      continue;
+    }
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`OpenRouter ${res.status}: ${text}`);
+    }
+
+    const data = await res.json();
+    return data.choices[0].message.content?.trim() ?? '';
   }
 
-  const data = await res.json();
-  return data.choices[0].message.content?.trim() ?? '';
+  throw new Error('Too many requests — OpenRouter rate limit. Please try again in a moment.');
 }
 
 export async function POST(request: NextRequest) {

@@ -81,6 +81,8 @@ export default function UploadPage() {
         const { script } = await genRes.json();
         allScripts.push(script ?? '');
         setProgress({ current: i + 1, total: slides.length });
+        // Small gap between requests to avoid OpenRouter rate limits
+        if (i < slides.length - 1) await new Promise((r) => setTimeout(r, 600));
       }
 
       // 3. Save session and redirect
