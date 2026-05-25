@@ -36,10 +36,11 @@ export async function POST(req: NextRequest) {
     return new NextResponse(buf, { headers: { 'Content-Type': 'audio/mpeg', 'X-Engine': 'openai-hd' } });
   }
 
-  // Fallback: Edge TTS
+  // Fallback: Edge TTS — use the requested voice if it's an Edge voice, otherwise default
+  const edgeVoice = voice.includes('Neural') ? voice : 'en-GB-SoniaNeural';
   const { MsEdgeTTS, OUTPUT_FORMAT } = await import('msedge-tts');
   const tts = new MsEdgeTTS();
-  await tts.setMetadata('en-GB-SoniaNeural', OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3);
+  await tts.setMetadata(edgeVoice, OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3);
   const { audioStream } = tts.toStream(text.slice(0, 4096));
   const buf = await new Promise<Buffer>((resolve, reject) => {
     const chunks: Buffer[] = [];
