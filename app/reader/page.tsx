@@ -186,11 +186,22 @@ export default function ReaderPage() {
     formData.append('file', file);
 
     try {
-      const res = await fetch('/api/extract-doc', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error || 'Failed to extract text.'); return; }
-      setParagraphs(data.paragraphs);
-      setFileName(file.name);
+      if (file.name.endsWith('.pptx')) {
+        const res = await fetch('/api/parse', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!res.ok) { setError(data.error || 'Failed to parse PPTX.'); return; }
+        const paras = data.slides.flatMap((s: { title: string; body: string[] }) =>
+          [s.title, ...s.body].filter(Boolean)
+        );
+        setParagraphs(paras);
+        setFileName(data.name ?? file.name);
+      } else {
+        const res = await fetch('/api/extract-doc', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!res.ok) { setError(data.error || 'Failed to extract text.'); return; }
+        setParagraphs(data.paragraphs);
+        setFileName(file.name);
+      }
     } catch {
       setError('Failed to read the file. Try again.');
     } finally {
@@ -391,7 +402,7 @@ export default function ReaderPage() {
             <Upload className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">{hasDocs ? 'New file' : 'Upload'}</span>
           </button>
-          <input ref={fileInputRef} type="file" accept=".pdf,.docx" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }} />
+          <input ref={fileInputRef} type="file" accept=".pptx,.pdf,.docx" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }} />
         </div>
 
         {/* Progress bar */}

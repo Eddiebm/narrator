@@ -98,14 +98,22 @@ export default function PodcastPage() {
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const res = await fetch('/api/parse', { method: 'POST', body: formData });
-      if (!res.ok) { setError('Failed to parse file.'); return; }
-      const { slides, name } = await res.json();
-      const content = slides
-        .map((s: { title: string; body: string[] }) => `${s.title}\n${s.body.join('\n')}`)
-        .join('\n\n');
-      setSlideContent(content);
-      setDeckName(name);
+      if (file.name.endsWith('.pptx')) {
+        const res = await fetch('/api/parse', { method: 'POST', body: formData });
+        if (!res.ok) { setError('Failed to parse file.'); return; }
+        const { slides, name } = await res.json();
+        const content = slides
+          .map((s: { title: string; body: string[] }) => `${s.title}\n${s.body.join('\n')}`)
+          .join('\n\n');
+        setSlideContent(content);
+        setDeckName(name);
+      } else {
+        const res = await fetch('/api/extract-doc', { method: 'POST', body: formData });
+        if (!res.ok) { setError('Failed to extract text.'); return; }
+        const data = await res.json();
+        setSlideContent(data.paragraphs?.join('\n\n') ?? '');
+        setDeckName(file.name);
+      }
     } catch { setError('Failed to read file.'); }
     finally { setIsParsing(false); }
   }, []);
@@ -271,7 +279,7 @@ export default function PodcastPage() {
               <span className="text-sm text-ink-muted">{isParsing ? 'Parsing…' : 'Upload a PPTX'}</span>
             </button>
           )}
-          <input ref={fileInputRef} type="file" accept=".pptx" className="hidden"
+          <input ref={fileInputRef} type="file" accept=".pptx,.pdf,.docx" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }} />
         </div>
 
