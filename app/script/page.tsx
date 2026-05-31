@@ -208,17 +208,17 @@ export default function ScriptPage() {
     try {
       if (file.name.endsWith('.pptx')) {
         const res = await fetch('/api/parse', { method: 'POST', body: formData });
+        if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d.error || `Parse failed (${res.status})`); return; }
         const data = await res.json();
-        if (!res.ok) { setError(data.error || 'Failed to parse PPTX.'); return; }
         const text = data.slides.map((s: { title: string; body: string[] }) => [s.title, ...s.body].join('\n')).join('\n\n');
         loadContent(text, data.name ?? file.name);
       } else {
         const res = await fetch('/api/extract-doc', { method: 'POST', body: formData });
+        if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d.error || `Extract failed (${res.status})`); return; }
         const data = await res.json();
-        if (!res.ok) { setError(data.error || 'Failed to extract text.'); return; }
         loadContent(data.paragraphs?.join('\n\n') ?? '', file.name);
       }
-    } catch { setError('Failed to read the file.'); }
+    } catch (err) { setError(err instanceof Error ? err.message : 'Failed to read the file.'); }
     finally { setIsExtracting(false); }
   }, [loadContent]);
 
