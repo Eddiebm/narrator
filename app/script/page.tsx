@@ -372,14 +372,18 @@ export default function ScriptPage() {
     const audio = audioRef.current;
     if (!audio) return;
     if (!url) { playLineFrom(start + 1); return; }
-    audio.pause(); audio.onended = null; audio.src = url; audio.load();
+    audio.pause(); audio.onended = null; audio.src = url;
     audio.onended = () => playLineFrom(start + 1);
     try {
       await audio.play();
       setIsPlaying(true);
+      // Prefetch the next 3 speakable lines so there's no silence gap on onended
       let next = start + 1;
-      while (next < lines.length && lines[next]?.type === 'character') next++;
-      if (next < lines.length) fetchLineAudio(next);
+      let prefetched = 0;
+      while (next < lines.length && prefetched < 3) {
+        while (next < lines.length && lines[next]?.type === 'character') next++;
+        if (next < lines.length) { fetchLineAudio(next); prefetched++; next++; }
+      }
     } catch (err: unknown) {
       if (err instanceof Error && err.name !== 'AbortError') {
         setError('Playback blocked. Tap play to start.'); setIsPlaying(false);
