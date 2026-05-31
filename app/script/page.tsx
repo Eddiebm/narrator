@@ -203,16 +203,17 @@ export default function ScriptPage() {
 
   const handleFile = useCallback(async (file: File) => {
     setIsExtracting(true); setError(null);
-    const formData = new FormData();
-    formData.append('file', file);
     try {
       if (file.name.endsWith('.pptx')) {
-        const res = await fetch('/api/parse', { method: 'POST', body: formData });
-        if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d.error || `Parse failed (${res.status})`); return; }
-        const data = await res.json();
-        const text = data.slides.map((s: { title: string; body: string[] }) => [s.title, ...s.body].join('\n')).join('\n\n');
-        loadContent(text, data.name ?? file.name);
+        // Parse PPTX in the browser — no upload, no server size limit
+        const { parsePptx } = await import('@/lib/pptx');
+        const buffer = await file.arrayBuffer();
+        const slides = await parsePptx(buffer);
+        const text = slides.map((s) => [s.title, ...s.body].join('\n')).join('\n\n');
+        loadContent(text, file.name.replace('.pptx', ''));
       } else {
+        const formData = new FormData();
+        formData.append('file', file);
         const res = await fetch('/api/extract-doc', { method: 'POST', body: formData });
         if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d.error || `Extract failed (${res.status})`); return; }
         const data = await res.json();
