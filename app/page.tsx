@@ -31,8 +31,10 @@ export default function UploadPage() {
 
   const processFile = useCallback(
     async (file: File) => {
-      if (!file.name.endsWith('.pptx')) {
-        setError('Please upload a .pptx file.');
+      const isPptx = file.name.endsWith('.pptx');
+      const isDocx = file.name.endsWith('.docx');
+      if (!isPptx && !isDocx) {
+        setError('Please upload a .pptx or .docx file.');
         return;
       }
 
@@ -41,24 +43,41 @@ export default function UploadPage() {
 
       try {
 
-      // Save original file to IndexedDB so the editor can export PPTX with audio
-      file.arrayBuffer().then((buf) => savePptx(buf)).catch(() => {});
+      let slides: ParsedSlide[];
+      let name: string;
 
-      // 1. Parse the PPTX
-      const formData = new FormData();
-      formData.append('file', file);
+      if (isPptx) {
+        // Save original file to IndexedDB so the editor can export PPTX with audio
+        file.arrayBuffer().then((buf) => savePptx(buf)).catch(() => {});
 
-      const parseRes = await fetch('/api/parse', { method: 'POST', body: formData });
-      if (!parseRes.ok) {
-        setError('Failed to parse the file. Make sure it is a valid .pptx.');
-        setStep('idle');
-        return;
+        const formData = new FormData();
+        formData.append('file', file);
+        const parseRes = await fetch('/api/parse', { method: 'POST', body: formData });
+        if (!parseRes.ok) {
+          setError('Failed to parse the file. Make sure it is a valid .pptx.');
+          setStep('idle');
+          return;
+        }
+        ({ slides, name } = (await parseRes.json()) as { slides: ParsedSlide[]; name: string });
+      } else {
+        // DOCX — extract paragraphs, treat each as a slide
+        const formData = new FormData();
+        formData.append('file', file);
+        const extractRes = await fetch('/api/extract-doc', { method: 'POST', body: formData });
+        if (!extractRes.ok) {
+          setError('Failed to read the Word document.');
+          setStep('idle');
+          return;
+        }
+        const { paragraphs } = (await extractRes.json()) as { paragraphs: string[] };
+        name = file.name.replace(/\.docx$/i, '');
+        slides = paragraphs.map((p, i) => ({
+          index: i,
+          title: p.slice(0, 60) + (p.length > 60 ? '…' : ''),
+          body: [p],
+          notes: '',
+        }));
       }
-
-      const { slides, name } = (await parseRes.json()) as {
-        slides: ParsedSlide[];
-        name: string;
-      };
 
       // 2. Generate scripts — one per request so each stays well inside edge runtime limits
       setStep('generating');
@@ -222,13 +241,13 @@ export default function UploadPage() {
             <Upload className="w-7 h-7 text-ink-muted" />
           </div>
           <div className="text-center">
-            <p className="font-medium text-ink mb-1">Drop your .pptx here</p>
+            <p className="font-medium text-ink mb-1">Drop your .pptx or .docx here</p>
             <p className="text-sm text-ink-muted">or click to browse</p>
           </div>
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pptx"
+            accept=".pptx,.docx"
             className="hidden"
             onChange={handleFileChange}
           />
