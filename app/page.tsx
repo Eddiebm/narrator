@@ -33,8 +33,9 @@ export default function UploadPage() {
     async (file: File) => {
       const isPptx = file.name.endsWith('.pptx');
       const isDocx = file.name.endsWith('.docx');
-      if (!isPptx && !isDocx) {
-        setError('Please upload a .pptx or .docx file.');
+      const isPdf  = file.name.toLowerCase().endsWith('.pdf');
+      if (!isPptx && !isDocx && !isPdf) {
+        setError('Please upload a .pptx, .docx, or .pdf file.');
         return;
       }
 
@@ -59,6 +60,30 @@ export default function UploadPage() {
           return;
         }
         ({ slides, name } = (await parseRes.json()) as { slides: ParsedSlide[]; name: string });
+      } else if (isPdf) {
+        // PDF — send to extract-doc (Node.js serverless, handles pdf-parse)
+        const formData = new FormData();
+        formData.append('file', file);
+        const extractRes = await fetch('/api/extract-doc', { method: 'POST', body: formData });
+        if (!extractRes.ok) {
+          const body = await extractRes.json().catch(() => ({}));
+          setError(body.error || 'Failed to extract text from PDF.');
+          setStep('idle');
+          return;
+        }
+        const { paragraphs: pdfParas } = await extractRes.json() as { paragraphs: string[]; total: number };
+        if (!pdfParas?.length) {
+          setError('No readable text found in the PDF.');
+          setStep('idle');
+          return;
+        }
+        name = file.name.replace(/\.pdf$/i, '');
+        slides = pdfParas.map((p: string, i: number) => ({
+          index: i,
+          title: p.slice(0, 60) + (p.length > 60 ? '…' : ''),
+          body: [p],
+          notes: '',
+        }));
       } else {
         // DOCX — parse client-side with mammoth (no upload, no size limit)
         const mammoth = await import('mammoth');
@@ -244,7 +269,7 @@ export default function UploadPage() {
             <Upload className="w-7 h-7 text-ink-muted" />
           </div>
           <div className="text-center">
-            <p className="font-medium text-ink mb-1">Drop your .pptx or .docx here</p>
+            <p className="font-medium text-ink mb-1">Drop your .pptx, .docx, or .pdf here</p>
             <p className="text-sm text-ink-muted">or click to browse</p>
           </div>
           <input
