@@ -155,6 +155,7 @@ export default function ScriptPage() {
   const [error, setError] = useState<string | null>(null);
   const [speed, setSpeed] = useState(1.0);
   const [wpm, setWpm] = useState(160);
+  const [fontSize, setFontSize] = useState(28);
   const [isScrolling, setIsScrolling] = useState(false);
   const [fileName, setFileName] = useState('');
   const [isDownloadingMp3, setIsDownloadingMp3] = useState(false);
@@ -686,14 +687,19 @@ export default function ScriptPage() {
       {hasContent && mode === 'teleprompter' && (
         <main ref={teleprompterRef} className="flex-1 overflow-y-auto px-8 py-16 pb-32" style={{ scrollBehavior: 'auto' }}>
           <div className="max-w-3xl mx-auto">
-            <div className="flex items-center gap-3 mb-10 justify-center">
+            <div className="flex flex-wrap items-center gap-4 mb-10 justify-center">
               <span className="text-xs text-ink-muted">Scroll speed</span>
               <input type="range" min={60} max={400} step={10} value={wpm}
                 onChange={(e) => { setWpm(Number(e.target.value)); if (isScrolling) { stopScroll(); startScroll(); } }}
                 className="w-32 accent-accent" />
               <span className="text-xs text-ink-muted w-16">{wpm} WPM</span>
+              <span className="text-xs text-ink-muted">Font size</span>
+              <input type="range" min={16} max={56} step={2} value={fontSize}
+                onChange={(e) => setFontSize(Number(e.target.value))}
+                className="w-28 accent-accent" />
+              <span className="text-xs text-ink-muted w-8">{fontSize}px</span>
             </div>
-            <div className="text-2xl leading-loose text-ink space-y-6">
+            <div className="leading-loose text-ink space-y-6" style={{ fontSize: `${fontSize}px` }}>
               {lines.map((line, i) => {
                 if (line.type === 'character') return <p key={i} className="text-sm font-mono font-bold text-accent-light">{line.text}</p>;
                 if (line.type === 'direction') return <p key={i} className="text-lg text-ink-dim italic">{line.text}</p>;

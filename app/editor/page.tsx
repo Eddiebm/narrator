@@ -13,7 +13,8 @@ import {
   Loader2,
   Music2,
   Video,
-  Archive,
+  Square,
+  SkipForward,
 } from 'lucide-react';
 import type { SlideData, Voice, PresentationStyle, NarratorSession } from '@/lib/types';
 import { VOICES } from '@/lib/types';
@@ -39,6 +40,7 @@ export default function EditorPage() {
   const autoStartedRef = useRef(false);
   const wasGeneratingRef = useRef(false);
   const audioUrlsRef = useRef<string[]>([]);
+  const stopRef = useRef(false);
 
   useEffect(() => {
     const raw = localStorage.getItem('narrator-session');
@@ -179,10 +181,16 @@ export default function EditorPage() {
     [slides, globalVoice, globalSpeed, updateSlide]
   );
 
-  const generateAllAudio = useCallback(async () => {
+  const stopGeneration = useCallback(() => { stopRef.current = true; }, []);
+
+  const generateAllAudio = useCallback(async (fromIndex = 0) => {
+    stopRef.current = false;
     setIsGeneratingAll(true);
-    for (let i = 0; i < slides.length; i++) {
+    for (let i = fromIndex; i < slides.length; i++) {
+      if (stopRef.current) break;
+      if (slides[i].audioUrl) continue; // skip slides that already have audio
       await generateAudio(i);
+      if (stopRef.current) break;
     }
     setIsGeneratingAll(false);
   }, [slides, generateAudio]);
@@ -431,14 +439,31 @@ export default function EditorPage() {
             </div>
           </div>
 
-          <button
-            onClick={generateAllAudio}
-            disabled={isGeneratingAll}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-accent/90 disabled:opacity-50 text-white text-sm rounded-lg font-medium transition-all flex-shrink-0"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isGeneratingAll ? 'animate-spin' : ''}`} />
-            <span>{isGeneratingAll ? `${generatedCount}/${slides.length}…` : 'Generate All'}</span>
-          </button>
+          {isGeneratingAll ? (
+            <button
+              onClick={stopGeneration}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-sm rounded-lg font-medium transition-all flex-shrink-0"
+            >
+              <Square className="w-3.5 h-3.5" />
+              <span>Stop · {generatedCount}/{slides.length}</span>
+            </button>
+          ) : generatedCount > 0 && generatedCount < slides.length ? (
+            <button
+              onClick={() => generateAllAudio()}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-accent/90 text-white text-sm rounded-lg font-medium transition-all flex-shrink-0"
+            >
+              <SkipForward className="w-3.5 h-3.5" />
+              <span>Resume · {generatedCount}/{slides.length}</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => generateAllAudio()}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-accent/90 text-white text-sm rounded-lg font-medium transition-all flex-shrink-0"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>{generatedCount === slides.length && generatedCount > 0 ? 'Regenerate All' : 'Generate All'}</span>
+            </button>
+          )}
 
           {/* Per-slide ZIP (secondary) */}
           <button
