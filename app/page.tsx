@@ -60,16 +60,19 @@ export default function UploadPage() {
         }
         ({ slides, name } = (await parseRes.json()) as { slides: ParsedSlide[]; name: string });
       } else {
-        // DOCX — extract paragraphs, treat each as a slide
-        const formData = new FormData();
-        formData.append('file', file);
-        const extractRes = await fetch('/api/extract-doc', { method: 'POST', body: formData });
-        if (!extractRes.ok) {
-          setError('Failed to read the Word document.');
+        // DOCX — parse client-side with mammoth (no upload, no size limit)
+        const mammoth = await import('mammoth');
+        const buffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer: buffer });
+        const paragraphs = result.value
+          .split(/\n+/)
+          .map((p) => p.trim())
+          .filter((p) => p.length > 10);
+        if (!paragraphs.length) {
+          setError('No readable text found in the document.');
           setStep('idle');
           return;
         }
-        const { paragraphs } = (await extractRes.json()) as { paragraphs: string[] };
         name = file.name.replace(/\.docx$/i, '');
         slides = paragraphs.map((p, i) => ({
           index: i,
