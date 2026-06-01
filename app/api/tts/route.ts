@@ -1,4 +1,5 @@
-export const runtime = 'edge';
+export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -87,11 +88,18 @@ export async function POST(req: NextRequest) {
         speed: Math.min(Math.max(speed, 0.25), 4.0),
       }),
     });
+    const buf = await res.arrayBuffer();
     if (res.ok) {
-      const buf = await res.arrayBuffer();
-      return new NextResponse(buf, { headers: { 'Content-Type': 'audio/mpeg', 'X-Engine': 'openai-hd' } });
+      return new NextResponse(buf, { headers: { 'Content-Type': 'audio/mpeg', 'X-Engine': 'openai' } });
     }
-    // On quota/billing errors fall through to Google TTS so the app keeps working
+    // Only fall through to Google TTS on quota/rate-limit errors; hard-fail otherwise
+    let errBody: { error?: { code?: string } } = {};
+    try { errBody = JSON.parse(Buffer.from(buf).toString()); } catch { /* ignore */ }
+    const code = errBody?.error?.code ?? '';
+    if (!['insufficient_quota', 'rate_limit_exceeded'].includes(code)) {
+      return NextResponse.json({ error: `TTS failed: ${code || res.status}` }, { status: 502 });
+    }
+    // quota/rate-limit: fall through to Google
   }
 
   // Fallback: Google Translate TTS (free but only one English voice family)
