@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Upload, ClipboardPaste, Play, Pause, SkipBack, SkipForward,
   Loader2, Users, Tv, BookOpen, ChevronDown, Mic, RefreshCw, Download, Video, Music2,
+  Share2, Mail, Check,
 } from 'lucide-react';
 import { applyDict, loadDict } from '@/lib/pronunciation';
 
@@ -161,6 +162,9 @@ export default function ScriptPage() {
   const [isDownloadingMp3, setIsDownloadingMp3] = useState(false);
   const [isDownloadingMp4, setIsDownloadingMp4] = useState(false);
   const [exportProgress, setExportProgress] = useState({ current: 0, total: 0 });
+  const [isSharing, setIsSharing] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
 
   const currentLineIdxRef = useRef(0);
   const isPlayingRef = useRef(false);
@@ -338,6 +342,66 @@ export default function ScriptPage() {
       URL.revokeObjectURL(url);
     } finally { setIsDownloadingMp4(false); setExportProgress({ current: 0, total: 0 }); }
   }, [lines, fileName, isDownloadingMp3, isDownloadingMp4, speakableLines, renderAllBlobs]);
+
+  // ── Share reading session ─────────────────────────────────────────────────
+  const shareReading = useCallback(async () => {
+    if (!lines.length) return;
+    setIsSharing(true);
+    try {
+      let body: object;
+      if (mode === 'multi') {
+        // Multi-character → podcast type
+        const speakableChars = characters.filter((c) =>
+          lines.some((l) => l.type === 'dialogue' && l.character === c)
+        );
+        body = {
+          type: 'podcast',
+          name: fileName.replace(/\.[^.]+$/, '') || 'Script',
+          content: {
+            lines: lines
+              .filter((l) => l.type === 'dialogue' || l.type === 'plain')
+              .map((l) => ({ speaker: l.character ?? 'Narrator', text: l.text })),
+            hosts: speakableChars.map((c) => ({
+              name: c,
+              voice: voiceMap[c] ?? narratorVoice,
+            })),
+          },
+        };
+      } else {
+        // Reader / teleprompter → reader type
+        body = {
+          type: 'reader',
+          name: fileName.replace(/\.[^.]+$/, '') || 'Script',
+          content: {
+            paragraphs: lines.filter((l) => l.type !== 'character').map((l) => l.text),
+            voice: narratorVoice,
+            speed,
+          },
+        };
+      }
+      const res = await fetch('/api/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error('Share failed');
+      const { url } = await res.json() as { url: string };
+      setShareUrl(url);
+      await navigator.clipboard.writeText(url);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 3000);
+    } catch { /* ignore */ }
+    finally { setIsSharing(false); }
+  }, [lines, mode, characters, voiceMap, narratorVoice, speed, fileName]);
+
+  const emailReading = useCallback(() => {
+    const name = fileName.replace(/\.[^.]+$/, '') || 'Script';
+    const subject = encodeURIComponent(`Script: ${name}`);
+    const bodyText = shareUrl
+      ? `Listen to the reading of "${name}":\n${shareUrl}`
+      : lines.filter((l) => l.type !== 'character').map((l) => l.text).join('\n\n');
+    window.open(`mailto:?subject=${subject}&body=${encodeURIComponent(bodyText)}`);
+  }, [fileName, shareUrl, lines]);
 
   // ── TTS for playback ─────────────────────────────────────────────────────
   const fetchLineAudio = useCallback(async (idx: number): Promise<string | null> => {
@@ -521,7 +585,7 @@ export default function ScriptPage() {
           <input ref={fileInputRef} type="file" accept=".pptx,.pdf,.docx,.txt,.fdx" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }} />
 
-          {/* Download buttons */}
+          {/* Download + Share buttons */}
           {hasContent && mode !== 'teleprompter' && (
             <>
               <button
@@ -545,6 +609,27 @@ export default function ScriptPage() {
                 <span className="hidden sm:inline">
                   {isDownloadingMp4 ? `${exportProgress.current}/${exportProgress.total}` : 'MP4'}
                 </span>
+              </button>
+              {/* Share */}
+              <button
+                onClick={shareUrl
+                  ? async () => { await navigator.clipboard.writeText(shareUrl); setShareCopied(true); setTimeout(() => setShareCopied(false), 3000); }
+                  : shareReading}
+                disabled={isSharing}
+                title={shareUrl ? 'Copy link again' : 'Create shareable link — recipient can listen with TTS'}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-card border border-surface-border hover:border-accent disabled:opacity-50 text-sm rounded-lg font-medium transition-all flex-shrink-0"
+              >
+                {isSharing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : shareCopied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Share2 className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline">{shareCopied ? 'Copied!' : shareUrl ? 'Copy link' : 'Share'}</span>
+              </button>
+              {/* Email */}
+              <button
+                onClick={emailReading}
+                title="Open email with script / share link"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-card border border-surface-border hover:border-accent text-sm rounded-lg font-medium transition-all flex-shrink-0"
+              >
+                <Mail className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Email</span>
               </button>
             </>
           )}
