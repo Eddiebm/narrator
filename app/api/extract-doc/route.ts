@@ -19,11 +19,10 @@ export async function POST(req: NextRequest) {
         // @ts-expect-error polyfill
         globalThis.DOMMatrix = class DOMMatrix { constructor() { return new Proxy(this, {}); } };
       }
-      // pdf-parse v2 exports a class-based API (PDFParse), not a callable function
+      // pdf-parse v1: module.exports is the parse function directly
       // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
-      const { PDFParse } = require('pdf-parse') as any;
-      const parser = new PDFParse({ data: buffer });
-      const result = await parser.getText();
+      const pdfParse = require('pdf-parse') as any;
+      const result = await pdfParse(buffer);
       text = result.text;
     } else if (ext === 'docx') {
       const mammoth = await import('mammoth');
