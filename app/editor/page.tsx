@@ -195,6 +195,18 @@ export default function EditorPage() {
     setIsGeneratingAll(false);
   }, [slides, generateAudio]);
 
+  const retryFailed = useCallback(async () => {
+    stopRef.current = false;
+    setIsGeneratingAll(true);
+    for (let i = 0; i < slides.length; i++) {
+      if (stopRef.current) break;
+      if (!slides[i].error || slides[i].audioUrl) continue; // only retry errored slides
+      await generateAudio(i);
+      if (stopRef.current) break;
+    }
+    setIsGeneratingAll(false);
+  }, [slides, generateAudio]);
+
   const downloadZip = useCallback(async () => {
     const hasAudio = slides.some((s) => s.audioBlob);
     if (!hasAudio) return;
@@ -384,6 +396,7 @@ export default function EditorPage() {
   );
 
   const generatedCount = slides.filter((s) => s.audioUrl).length;
+  const failedCount = slides.filter((s) => s.error && !s.audioUrl).length;
 
   if (!slides.length) {
     return (
@@ -462,6 +475,17 @@ export default function EditorPage() {
             >
               <RefreshCw className="w-3.5 h-3.5" />
               <span>{generatedCount === slides.length && generatedCount > 0 ? 'Regenerate All' : 'Generate All'}</span>
+            </button>
+          )}
+
+          {/* Retry failed slides */}
+          {!isGeneratingAll && failedCount > 0 && (
+            <button
+              onClick={retryFailed}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 text-sm rounded-lg font-medium transition-all flex-shrink-0"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Retry {failedCount} failed</span>
             </button>
           )}
 
