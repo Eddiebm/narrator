@@ -445,22 +445,42 @@ export default function EditorPage() {
   const emailPackage = useCallback(async () => {
     if (!slides.some((s) => s.audioBlob)) return;
     setIsEmailingPackage(true);
+    setExportError(null);
+    const safeName = presentationName.slice(0, 60).replace(/[^a-z0-9]/gi, '-').toLowerCase();
     try {
-      setEmailPackagePhase('Building ZIP…');
       const JSZip = (await import('jszip')).default;
       const zip = new JSZip();
 
-      // MP3s
+      // 1. Combined MP3
+      setEmailPackagePhase('Building MP3…');
+      const audioBlobs = slides.map((s) => s.audioBlob).filter(Boolean) as Blob[];
+      if (audioBlobs.length) {
+        zip.file(`${safeName}-narration.mp3`, new Blob(audioBlobs, { type: 'audio/mpeg' }));
+      }
+
+      // 2. Per-slide MP3s
+      const mp3Folder = zip.folder('mp3s');
       for (const slide of slides) {
         if (!slide.audioBlob) continue;
         const num = String(slide.index + 1).padStart(2, '0');
         const safe = slide.title.slice(0, 40).replace(/[^a-z0-9]/gi, '-').toLowerCase();
-        zip.file(`audio/${num}-${safe}.mp3`, slide.audioBlob);
+        mp3Folder!.file(`${num}-${safe}.mp3`, slide.audioBlob);
       }
 
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      // 3. Narrated PPTX
+      setEmailPackagePhase('Building PPTX…');
+      try {
+        let pptxBuffer = await loadPptx();
+        if (pptxBuffer) {
+          const { embedAudioInPptx } = await import('@/lib/pptx-audio');
+          const { blob } = await embedAudioInPptx(pptxBuffer, slides.map((s) => s.audioBlob));
+          zip.file(`${safeName}-narrated.pptx`, blob);
+        }
+      } catch { /* skip pptx — still deliver MP3s */ }
 
+      // 4. Upload
       setEmailPackagePhase('Uploading…');
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
       const fd = new FormData();
       fd.append('file', zipBlob);
       fd.append('name', presentationName);
@@ -472,10 +492,11 @@ export default function EditorPage() {
       }
       const { url } = await res.json() as { url: string };
 
+      // 5. Open email
       setEmailPackagePhase('Opening email…');
-      const subject = encodeURIComponent(`Audio Package: ${presentationName}`);
+      const subject = encodeURIComponent(`Narration Package: ${presentationName}`);
       const body = encodeURIComponent(
-        `Hi,\n\nHere is the narration audio package for "${presentationName}":\n\n${url}\n\nThe link contains all MP3 files in a ZIP archive. It expires in 30 days.\n`
+        `Hi,\n\nHere is the narration package for "${presentationName}":\n\n${url}\n\nContains:\n• Combined MP3\n• Per-slide MP3s\n• Narrated PPTX\n\nDownload link expires in 30 days.\n`
       );
       window.open(`mailto:?subject=${subject}&body=${body}`);
     } catch (err) {
@@ -484,7 +505,6 @@ export default function EditorPage() {
       setIsEmailingPackage(false);
       setEmailPackagePhase('');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slides, presentationName]);
 
   const generatedCount = slides.filter((s) => s.audioUrl).length;
