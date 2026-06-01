@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'tts-1',
-        input: script.slice(0, 4096),
+        input: script.slice(0, 1500),
         voice: oaiVoice,
         speed: Math.min(Math.max(speed, 0.25), 4.0),
       }),

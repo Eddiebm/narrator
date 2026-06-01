@@ -37,7 +37,7 @@ async function generateWithOpenAI(content: string, style: PresentationStyle, api
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
       model: 'gpt-4o-mini',
-      max_tokens: 500,
+      max_tokens: 300,
       messages: [{ role: 'user', content: PROMPT(style, content) }],
     }),
   });
