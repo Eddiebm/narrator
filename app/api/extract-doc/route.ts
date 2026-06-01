@@ -14,6 +14,11 @@ export async function POST(req: NextRequest) {
 
   try {
     if (ext === 'pdf') {
+      // pdf-parse references DOMMatrix which doesn't exist in Node.js — polyfill before import
+      if (typeof globalThis.DOMMatrix === 'undefined') {
+        // @ts-expect-error polyfill
+        globalThis.DOMMatrix = class DOMMatrix { constructor() { return new Proxy(this, {}); } };
+      }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const pdfParse: any = (await import('pdf-parse'));
       const result = await (pdfParse.default ?? pdfParse)(buffer);
