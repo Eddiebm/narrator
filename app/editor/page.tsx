@@ -42,6 +42,8 @@ export default function EditorPage() {
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [isSharing, setIsSharing] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
+  const [isEmailingPackage, setIsEmailingPackage] = useState(false);
+  const [emailPackagePhase, setEmailPackagePhase] = useState('');
   const autoExportRef = useRef(false);
   const autoStartedRef = useRef(false);
   const wasGeneratingRef = useRef(false);
@@ -440,6 +442,51 @@ export default function EditorPage() {
     window.open(`mailto:?subject=${subject}&body=${body}`);
   }, [presentationName, shareUrl, slides]);
 
+  const emailPackage = useCallback(async () => {
+    if (!slides.some((s) => s.audioBlob)) return;
+    setIsEmailingPackage(true);
+    try {
+      setEmailPackagePhase('Building ZIP…');
+      const JSZip = (await import('jszip')).default;
+      const zip = new JSZip();
+
+      // MP3s
+      for (const slide of slides) {
+        if (!slide.audioBlob) continue;
+        const num = String(slide.index + 1).padStart(2, '0');
+        const safe = slide.title.slice(0, 40).replace(/[^a-z0-9]/gi, '-').toLowerCase();
+        zip.file(`audio/${num}-${safe}.mp3`, slide.audioBlob);
+      }
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+
+      setEmailPackagePhase('Uploading…');
+      const fd = new FormData();
+      fd.append('file', zipBlob);
+      fd.append('name', presentationName);
+
+      const res = await fetch('/api/package-upload', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(err.error ?? 'Upload failed');
+      }
+      const { url } = await res.json() as { url: string };
+
+      setEmailPackagePhase('Opening email…');
+      const subject = encodeURIComponent(`Audio Package: ${presentationName}`);
+      const body = encodeURIComponent(
+        `Hi,\n\nHere is the narration audio package for "${presentationName}":\n\n${url}\n\nThe link contains all MP3 files in a ZIP archive. It expires in 30 days.\n`
+      );
+      window.open(`mailto:?subject=${subject}&body=${body}`);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Email package failed');
+    } finally {
+      setIsEmailingPackage(false);
+      setEmailPackagePhase('');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slides, presentationName]);
+
   const generatedCount = slides.filter((s) => s.audioUrl).length;
   const failedCount = slides.filter((s) => s.error && !s.audioUrl).length;
 
@@ -617,14 +664,25 @@ export default function EditorPage() {
             <span className="hidden sm:inline">{shareCopied ? 'Copied!' : shareUrl ? 'Copy link' : 'Share'}</span>
           </button>
 
-          {/* Email */}
+          {/* Email scripts */}
           <button
             onClick={emailSession}
-            title="Open email client with scripts"
+            title="Open email client with scripts/link"
             className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-hover border border-surface-border hover:border-accent text-sm rounded-lg font-medium transition-all flex-shrink-0"
           >
             <Mail className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Email</span>
+            <span className="hidden sm:inline">Email Scripts</span>
+          </button>
+
+          {/* Email full audio package */}
+          <button
+            onClick={emailPackage}
+            disabled={generatedCount === 0 || isEmailingPackage}
+            title={generatedCount === 0 ? 'Generate audio first' : 'Upload audio ZIP and email download link'}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-hover border border-surface-border hover:border-accent disabled:opacity-40 text-sm rounded-lg font-medium transition-all flex-shrink-0"
+          >
+            {isEmailingPackage ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
+            <span className="hidden sm:inline">{isEmailingPackage ? emailPackagePhase || 'Preparing…' : 'Email Package'}</span>
           </button>
         </div>
       </header>
