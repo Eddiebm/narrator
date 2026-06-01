@@ -15,6 +15,9 @@ import {
   Video,
   Square,
   SkipForward,
+  Share2,
+  Mail,
+  Check,
 } from 'lucide-react';
 import type { SlideData, Voice, PresentationStyle, NarratorSession } from '@/lib/types';
 import { VOICES } from '@/lib/types';
@@ -36,6 +39,9 @@ export default function EditorPage() {
   const [isExportingPackage, setIsExportingPackage] = useState(false);
   const [packagePhase, setPackagePhase] = useState<string>('');
   const [exportError, setExportError] = useState<string | null>(null);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [isSharing, setIsSharing] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
   const autoExportRef = useRef(false);
   const autoStartedRef = useRef(false);
   const wasGeneratingRef = useRef(false);
@@ -395,6 +401,45 @@ export default function EditorPage() {
     [updateSlide]
   );
 
+  const shareSession = useCallback(async () => {
+    setIsSharing(true);
+    try {
+      const res = await fetch('/api/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'narrator',
+          name: presentationName,
+          content: {
+            slides: slides.map((s) => ({ title: s.title, script: s.script })),
+          },
+        }),
+      });
+      if (!res.ok) throw new Error('Share failed');
+      const { url } = await res.json() as { url: string };
+      setShareUrl(url);
+      await navigator.clipboard.writeText(url);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 3000);
+    } catch {
+      // ignore — URL stays null
+    } finally {
+      setIsSharing(false);
+    }
+  }, [presentationName, slides]);
+
+  const emailSession = useCallback(() => {
+    const url = shareUrl;
+    const subject = encodeURIComponent(`Narration: ${presentationName}`);
+    const body = url
+      ? encodeURIComponent(`Hi,\n\nHere are the narration scripts for "${presentationName}":\n${url}\n`)
+      : encodeURIComponent(
+          `Narration scripts for "${presentationName}":\n\n` +
+          slides.map((s, i) => `[${i + 1}] ${s.title}\n${s.script}`).join('\n\n')
+        );
+    window.open(`mailto:?subject=${subject}&body=${body}`);
+  }, [presentationName, shareUrl, slides]);
+
   const generatedCount = slides.filter((s) => s.audioUrl).length;
   const failedCount = slides.filter((s) => s.error && !s.audioUrl).length;
 
@@ -558,6 +603,29 @@ export default function EditorPage() {
           {generatedCount === 0 && (
             <span className="text-xs text-ink-muted italic">— generate audio first</span>
           )}
+
+          <div className="flex-1" />
+
+          {/* Share link */}
+          <button
+            onClick={shareUrl ? async () => { await navigator.clipboard.writeText(shareUrl); setShareCopied(true); setTimeout(() => setShareCopied(false), 3000); } : shareSession}
+            disabled={isSharing}
+            title={shareUrl ? 'Copy link again' : 'Create a shareable link to these scripts'}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-hover border border-surface-border hover:border-accent disabled:opacity-50 text-sm rounded-lg font-medium transition-all flex-shrink-0"
+          >
+            {isSharing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : shareCopied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Share2 className="w-3.5 h-3.5" />}
+            <span className="hidden sm:inline">{shareCopied ? 'Copied!' : shareUrl ? 'Copy link' : 'Share'}</span>
+          </button>
+
+          {/* Email */}
+          <button
+            onClick={emailSession}
+            title="Open email client with scripts"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-hover border border-surface-border hover:border-accent text-sm rounded-lg font-medium transition-all flex-shrink-0"
+          >
+            <Mail className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Email</span>
+          </button>
         </div>
       </header>
 

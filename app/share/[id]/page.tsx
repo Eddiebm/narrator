@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Play, Pause, Loader2, Radio, Rss } from 'lucide-react';
 
 interface ShareData {
-  type: 'reader' | 'podcast' | 'script';
+  type: 'reader' | 'podcast' | 'script' | 'narrator';
   name: string;
   content: {
     paragraphs?: string[];
@@ -12,6 +12,7 @@ interface ShareData {
     speed?: number;
     lines?: { speaker: string; text: string }[];
     hosts?: { name: string; voice: string }[];
+    slides?: { title: string; script: string }[];
   };
   audio_url: string | null;
 }
@@ -157,9 +158,12 @@ export default function SharePage({ params }: { params: { id: string } }) {
   }
 
   const isPodcast = data.type === 'podcast';
+  const isScript = data.type === 'script';
+  const isNarrator = data.type === 'narrator';
   const lines = data.content.lines ?? [];
   const paragraphs = data.content.paragraphs ?? [];
   const hosts = data.content.hosts ?? [];
+  const narratorSlides = data.content.slides ?? [];
 
   const hostColour = (name: string) => {
     const idx = hosts.findIndex(h => h.name === name);
@@ -190,8 +194,29 @@ export default function SharePage({ params }: { params: { id: string } }) {
         </div>
       </header>
 
-      <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-6 pb-28">
-        {!isPodcast && (
+      <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-6 pb-10">
+        {isNarrator && (
+          <div className="flex flex-col gap-4">
+            {narratorSlides.map((slide, i) => (
+              <div key={i} className="bg-surface-card border border-surface-border rounded-xl overflow-hidden">
+                <div className="flex items-center gap-3 px-4 py-3 border-b border-surface-border bg-surface/40">
+                  <span className="text-xs font-mono text-ink-muted w-6 text-right flex-shrink-0">
+                    {String(i + 1).padStart(2, '0')}
+                  </span>
+                  <h3 className="font-medium text-sm text-ink truncate flex-1">{slide.title}</h3>
+                </div>
+                <p className="px-4 py-3 text-sm text-ink leading-relaxed whitespace-pre-wrap">{slide.script}</p>
+              </div>
+            ))}
+          </div>
+        )}
+        {isScript && (
+          <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
+            <Radio className="w-8 h-8 text-ink-muted" />
+            <p className="text-ink-muted text-sm">Script sharing is not yet supported for playback.</p>
+          </div>
+        )}
+        {!isPodcast && !isScript && (
           <div className="flex flex-col gap-3">
             {paragraphs.map((para, i) => (
               <p
@@ -244,8 +269,8 @@ export default function SharePage({ params }: { params: { id: string } }) {
         )}
       </main>
 
-      {/* Playback bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-surface/95 backdrop-blur border-t border-surface-border">
+      {/* Playback bar — hidden for script/narrator shares */}
+      {!isScript && !isNarrator && <div className="fixed bottom-0 left-0 right-0 bg-surface/95 backdrop-blur border-t border-surface-border">
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-center">
           <button
             onClick={togglePlay}
@@ -259,7 +284,7 @@ export default function SharePage({ params }: { params: { id: string } }) {
               : <Play className="w-6 h-6 text-white ml-0.5" />}
           </button>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }
